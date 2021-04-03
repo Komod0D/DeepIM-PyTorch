@@ -11,6 +11,7 @@ import datasets.ycb_object
 import datasets.ycb_self_supervision
 import datasets.background
 import datasets.dex_ycb
+import datasets.swisscube
 import numpy as np
 
 # ycb video dataset
@@ -47,6 +48,11 @@ for setup in ('s0', 's1', 's2', 's3'):
     for split in ('train', 'val', 'test'):
         name = 'dex_ycb_{}_{}'.format(setup, split)
         __sets[name] = (lambda setup=setup, split=split: datasets.DexYCBDataset(setup, split))
+
+for split in ["test"]:
+    name = "swisscube_{}".format(split)
+    print(name)
+    __sets[name] = (lambda split=split: datasets.SwissCubeDataset(split))
 
 def get_dataset(name):
     """Get an imdb (image database) by name."""
