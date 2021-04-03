@@ -13,7 +13,7 @@ def get_available_devices():
         ["{}/query_devices".format(executable_path)]))
 
     available_devices = []
-    for i in range(num_devices):
+    for i in range(4):
         try:
             if b"NVIDIA" in subprocess.check_output(["{}/test_device".format(executable_path),  str(i)]):
                 available_devices.append(i)
