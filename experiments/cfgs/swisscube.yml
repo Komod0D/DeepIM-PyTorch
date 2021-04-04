@@ -34,5 +34,3 @@ TEST:
   VISUALIZE: False
   SYNTHESIZE: False
   ROS_CAMERA: 'camera'
-INTRINSICS:
-  CLASSES: !!python/tuple [4000, 0, 1024, 0, 4000, 1024, 0, 0, 1]

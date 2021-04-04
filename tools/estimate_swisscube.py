@@ -6,6 +6,7 @@
 
 """Test a DeepIM on images"""
 
+import cupy
 import torch
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
