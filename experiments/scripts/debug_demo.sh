@@ -5,10 +5,11 @@ set -e
 
 export PYTHONUNBUFFERED="True"
 
-python3 ./tools/estimate_swisscube.py --gpu 0 \
-  --imgdir data/images/1b/ \
-  --color *.bmp \
+python3 -m pdb ./tools/test_images.py --gpu 0 \
+  --imgdir data/demo/ \
+  --meta data/demo/meta.yml \
+  --color *color.png \
   --network flownets \
   --pretrained data/checkpoints/ycb_object/flownets_ycb_object_20objects_color_self_supervision_epoch_10.checkpoint.pth \
-  --dataset swisscube_test \
-  --cfg experiments/cfgs/swisscube.yml
+  --dataset ycb_object_test \
+  --cfg experiments/cfgs/ycb_object_flow.yml

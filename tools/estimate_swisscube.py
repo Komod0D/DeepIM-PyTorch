@@ -264,6 +264,14 @@ if __name__ == '__main__':
     # for each image
     for i in index_images:
         im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
+        middle_y = im.shape[0] / 2
+        middle_x = im.shape[1] / 2
+        x0, x1 = int(middle_x - width / 2), int(middle_x + width / 2)
+        y0, y1 = int(middle_y - height / 2), int(middle_y + height / 2)
+
+
+        im = im[y0:y1,x0:x1]
+        assert im.shape[0] == height and im.shape[1] == width
         print(images_color[i])
         if len(images_depth) > 0 and osp.exists(images_depth[i]):
             depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
@@ -285,7 +293,7 @@ if __name__ == '__main__':
         result_file = os.path.join(resdir_posecnn, name + '.mat')
         result = scipy.io.loadmat(result_file)
         rois = result['rois']
-        poses = result['poses']
+        poses = result['pose']
         print(result_file)
 
         # construct pose input to the network

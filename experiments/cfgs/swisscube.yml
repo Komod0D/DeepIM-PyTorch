@@ -31,6 +31,6 @@ TEST:
   IMS_PER_BATCH: 1
   ITERNUM: 4
   SCALES_BASE: !!python/tuple [1.0]
-  VISUALIZE: False
+  VISUALIZE: True
   SYNTHESIZE: False
   ROS_CAMERA: 'camera'
