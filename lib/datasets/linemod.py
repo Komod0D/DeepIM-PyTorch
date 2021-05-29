@@ -27,14 +27,14 @@ from transforms3d.euler import mat2euler, euler2mat, euler2quat
 from utils.pose_error import *
 from utils.se3 import *
 
-class SwissCubeDataset(data.Dataset, datasets.imdb):
+class LinemodDataset(data.Dataset, datasets.imdb):
     def __init__(self, image_set):
 
-        self._name = 'swisscube_' + image_set
+        self._name = 'linemod_' + image_set
         self._image_set = image_set
         self._model_path = os.path.join(datasets.ROOT_DIR, 'data', 'models')
 
-        self._classes_all = ['swisscube']
+        self._classes_all = ["{:0>6d}".format(i + 1) for i in range(15)]
         self._num_classes_all = len(self._classes_all)
         # TODO: INVESTIGATE
         self._class_colors_all = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255), \
@@ -44,11 +44,11 @@ class SwissCubeDataset(data.Dataset, datasets.imdb):
         self._symmetry_all = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0])
         self._extents_all = self._load_object_extents()
 
-        self._intrinsic_matrix = np.array([[4000, 0, 1024],
-                                          [0, 4000, 1024],
+        self._intrinsic_matrix = np.array([[572.4114, 0, 325.2611],
+                                          [0, 573.57043, 242.04899],
                                           [0, 0, 1]])
-        self._width = 2048
-        self._height = 2048
+        self._width = 640
+        self._height = 480
 
         # select a subset of classes
         self._classes = [self._classes_all[i] for i in cfg.TRAIN.CLASSES]
