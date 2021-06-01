@@ -12,6 +12,8 @@ import datasets.ycb_self_supervision
 import datasets.background
 import datasets.dex_ycb
 from datasets.swisscube import *
+import datasets.linemod
+from datasets.linemod import *
 import numpy as np
 
 # ycb video dataset
@@ -53,6 +55,11 @@ for split in ["test"]:
     name = "swisscube_{}".format(split)
     print(name)
     __sets[name] = (lambda split=split: SwissCubeDataset(split))
+
+for split in ["test"]:
+    name = "linemod_{}".format(split)
+    __sets[name] = (lambda split=split: LinemodDataset(split))
+
 
 def get_dataset(name):
     """Get an imdb (image database) by name."""

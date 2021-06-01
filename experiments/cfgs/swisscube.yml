@@ -33,4 +33,5 @@ TEST:
   SCALES_BASE: !!python/tuple [1.0]
   VISUALIZE: True
   SYNTHESIZE: False
-  ROS_CAMERA: 'camera'
+  ROS_CAMERA: 'camera' 
+

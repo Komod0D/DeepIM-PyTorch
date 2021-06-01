@@ -34,7 +34,7 @@ class LinemodDataset(data.Dataset, datasets.imdb):
         self._image_set = image_set
         self._model_path = os.path.join(datasets.ROOT_DIR, 'data', 'models')
 
-        self._classes_all = ["{:0>6d}".format(i + 1) for i in range(15)]
+        self._classes_all = ["{:0>6d}".format(i + 1) for i in range(1)]
         self._num_classes_all = len(self._classes_all)
         # TODO: INVESTIGATE
         self._class_colors_all = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255), \
@@ -77,7 +77,7 @@ class LinemodDataset(data.Dataset, datasets.imdb):
         self._total_poses = 0
 
         assert os.path.exists(self._model_path), \
-                'swisscube model path does not exist: {}'.format(self._model_path)
+                'linemod model path does not exist: {}'.format(self._model_path)
 
 
     def _render_item(self):

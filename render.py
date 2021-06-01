@@ -92,6 +92,7 @@ dp_split_test = dataset_params.get_split_params(datasets_path, dataset, 'test')
 dp_model = dataset_params.get_model_params(datasets_path, dataset, model_type)
 dp_camera = dataset_params.get_camera_params(datasets_path, dataset, cam_type)
 
+
 if not obj_ids:
   obj_ids = dp_model['obj_ids']
 
@@ -167,6 +168,10 @@ for obj_id in obj_ids:
       if view_id % 10 == 0:
         misc.log('Rendering - obj: {}, radius: {}, view: {}/{}'.format(
           obj_id, radius, view_id, len(views)))
+
+      t, R = view['t'], view['R']
+
+      print(f'translation: {t}, rotation: {R}')
 
       # Rendering.
       rgb = ren_rgb.render_object(
