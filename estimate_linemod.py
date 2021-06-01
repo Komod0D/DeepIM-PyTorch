@@ -37,9 +37,7 @@ from bop_toolkit_lib.renderer_adapter import RendererAdapter
 import json
 
 
-obj = '000006'
-
-posecnn_classes = ('__background__', obj)
+classes = [f'{obj:06d'} for obj in range(5, 16)]
 
 def parse_args():
     """
@@ -98,7 +96,7 @@ def parse_args():
                         default='*.png', type=str)
     parser.add_argument('--imgdir', dest='imgdir',
                         help='path of the directory with the test images',
-                        default=f'data/images/linemod/{obj}/rgb/', type=str)
+                        default='data/images/linemod/{%06d}/rgb/', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
@@ -172,6 +170,35 @@ def load_network():
     network.eval()
     return network
 
+def load_images(obj):
+    # list images
+    images_color = []
+    filename = os.path.join(args.imgdir.format(obj), args.color_name)
+
+    print(f'getting images from {filename}')
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_color.append(filename)
+    images_color.sort()
+
+    images_depth = []
+    filename = os.path.join(args.imgdir, args.depth_name)
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_depth.append(filename)
+    images_depth.sort()
+
+    resdir = os.path.join(args.imgdir, 'deepim_results_' + cfg.INPUT)
+    if not os.path.exists(resdir):
+        os.makedirs(resdir)
+
+    if cfg.TEST.VISUALIZE:
+        index_images = np.random.permutation(len(images_color))
+    else:
+        index_images = range(len(images_color))
+
 
 if __name__ == '__main__':
     intrinsic = np.array(
@@ -234,107 +261,82 @@ if __name__ == '__main__':
         print(f"Intrinsic matrix: \n{dataset._intrinsic_matrix}")
 
     
-    # list images
-    images_color = []
-    filename = os.path.join(args.imgdir, args.color_name)
-    
-    print(f'getting images from {filename}')
-    files = glob.glob(filename)
-    for i in range(len(files)):
-        filename = files[i]
-        images_color.append(filename)
-    images_color.sort()
+    for obj in classes:
+        images_color, images_depth, index_images = load_images(obj)
 
-    images_depth = []
-    filename = os.path.join(args.imgdir, args.depth_name)
-    files = glob.glob(filename)
-    for i in range(len(files)):
-        filename = files[i]
-        images_depth.append(filename)
-    images_depth.sort()
+        # prepare network
+        network = load_network()
 
-    resdir = os.path.join(args.imgdir, 'deepim_results_' + cfg.INPUT)
-    if not os.path.exists(resdir):
-        os.makedirs(resdir)
-
-    if cfg.TEST.VISUALIZE:
-        index_images = np.random.permutation(len(images_color))
-    else:
-        index_images = range(len(images_color))
-
-    # prepare network
-    network = load_network()
-
-    # prepare renderer
-    print('loading 3D models')
-    cfg.renderer = RendererAdapter(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT)
-    cfg.renderer.load_object(int(object))
+        # prepare renderer
+        print('loading 3D models')
+        cfg.renderer = RendererAdapter(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT)
+        cfg.renderer.load_object(int(obj))
 
 
-    # initialize tensors for testing
-    test_data = init_tensors()
+        # initialize tensors for testing
+        test_data = init_tensors()
 
-    
-    result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{obj}/scene_gt.json'
-    with open(result_file, 'r') as f:
-        results = json.load(f)
-    
-    # for each image
-    for i in index_images:
-        im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-        print(images_color[i])
-        if len(images_depth) > 0 and osp.exists(images_depth[i]):
-            depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
-            depth = depth.astype('float') / 1000.0
-            print(images_depth[i])
-        else:
-            depth = None
-            print('no depth image')
-
-        # rescale image if necessary
-        if cfg.TEST.SCALES_BASE[0] != 1:
-            im_scale = cfg.TEST.SCALES_BASE[0]
-            im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-            if depth is not None:
-                depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
-
-        # read initial pose estimation
-        name = os.path.basename(images_color[i])
-
-
-        num = int(name[:-4])
-        poses = results[str(num)][0]
-
-        rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
-        dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
-        print(f'disturbing rotation by {dr}')
-        rotation = dr @ rotation
         
-        translation = np.array(poses['cam_t_m2c'])
-        t_dev = np.abs(translation) / 20
-        dt = np.random.random(size=(3,)) * t_dev
-        translation += dt
-        print(f'disturbing translation by {dt}')
+        result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{obj:06d}/scene_gt.json'
+        with open(result_file, 'r') as f:
+            results = json.load(f)
         
+        # for each image
+        for i in index_images:
+            im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
+            print(images_color[i])
+            if len(images_depth) > 0 and osp.exists(images_depth[i]):
+                depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
+                depth = depth.astype('float') / 1000.0
+                print(images_depth[i])
+            else:
+                depth = None
+                print('no depth image')
 
-        rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
+            # rescale image if necessary
+            if cfg.TEST.SCALES_BASE[0] != 1:
+                im_scale = cfg.TEST.SCALES_BASE[0]
+                im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
+                if depth is not None:
+                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
 
-        poses = np.concatenate((rotation_q, translation))
+            # read initial pose estimation
+            name = os.path.basename(images_color[i])
 
-        # construct pose input to the network
-        poses_input = np.zeros((1, 9), dtype=np.float32)
-        # class id in DeepIM starts with 0
-        poses_input[:, 1] = 0
-        poses_input[:, 2:] = poses
 
-        # run network 
-        im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
+            num = int(name[:-4])
+            poses = results[str(num)][0]
 
-        # save result
-        if not cfg.TEST.VISUALIZE:
-            head, tail = os.path.split(images_color[i])
-            filename = os.path.join(resdir, tail + '.mat')
-            scipy.io.savemat(filename, pose_result, do_compression=True)
-            # rendered image
-            filename = os.path.join(resdir, tail + '_render.jpg')
-            cv2.imwrite(filename, im_pose_color[:, :, (2, 1, 0)])
+            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
+            dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
+            print(f'disturbing rotation by {dr}')
+            rotation = dr @ rotation
+            
+            translation = np.array(poses['cam_t_m2c'])
+            t_dev = np.abs(translation) / 20
+            dt = np.random.random(size=(3,)) * t_dev
+            translation += dt
+            print(f'disturbing translation by {dt}')
+            
+
+            rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
+
+            poses = np.concatenate((rotation_q, translation))
+
+            # construct pose input to the network
+            poses_input = np.zeros((1, 9), dtype=np.float32)
+            # class id in DeepIM starts with 0
+            poses_input[:, 1] = 0
+            poses_input[:, 2:] = poses
+
+            # run network 
+            im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
+
+            # save result
+            if not cfg.TEST.VISUALIZE:
+                head, tail = os.path.split(images_color[i])
+                filename = os.path.join(resdir, tail + '.mat')
+                scipy.io.savemat(filename, pose_result, do_compression=True)
+                # rendered image
+                filename = os.path.join(resdir, tail + '_render.jpg')
+                cv2.imwrite(filename, im_pose_color[:, :, (2, 1, 0)])
