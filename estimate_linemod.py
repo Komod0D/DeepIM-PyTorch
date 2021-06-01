@@ -37,7 +37,7 @@ from bop_toolkit_lib.renderer_adapter import RendererAdapter
 import json
 
 
-classes = [f'{obj:06d'} for obj in range(1, 16)]
+classes = [f'{obj:06d'} for obj in range(5, 16)]
 
 def parse_args():
     """
@@ -96,7 +96,7 @@ def parse_args():
                         default='*.png', type=str)
     parser.add_argument('--imgdir', dest='imgdir',
                         help='path of the directory with the test images',
-                        default='data/images/linemod/{}/rgb/', type=str)
+                        default='data/images/linemod/{%06d}/rgb/', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
@@ -169,6 +169,35 @@ def load_network():
     cudnn.benchmark = True
     network.eval()
     return network
+
+def load_images(obj):
+    # list images
+    images_color = []
+    filename = os.path.join(args.imgdir.format(obj), args.color_name)
+
+    print(f'getting images from {filename}')
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_color.append(filename)
+    images_color.sort()
+
+    images_depth = []
+    filename = os.path.join(args.imgdir, args.depth_name)
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_depth.append(filename)
+    images_depth.sort()
+
+    resdir = os.path.join(args.imgdir, 'deepim_results_' + cfg.INPUT)
+    if not os.path.exists(resdir):
+        os.makedirs(resdir)
+
+    if cfg.TEST.VISUALIZE:
+        index_images = np.random.permutation(len(images_color))
+    else:
+        index_images = range(len(images_color))
 
 
 if __name__ == '__main__':
