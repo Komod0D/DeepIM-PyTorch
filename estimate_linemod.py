@@ -37,7 +37,7 @@ from bop_toolkit_lib.renderer_adapter import RendererAdapter
 import json
 
 
-classes = [f'{obj:06d'} for obj in range(5, 16)]
+classes = [f'{obj:06d}' for obj in range(5, 16)]
 
 def parse_args():
     """
@@ -96,7 +96,7 @@ def parse_args():
                         default='*.png', type=str)
     parser.add_argument('--imgdir', dest='imgdir',
                         help='path of the directory with the test images',
-                        default='data/images/linemod/{%06d}/rgb/', type=str)
+                        default='data/images/linemod/%06d/rgb/', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
@@ -173,7 +173,7 @@ def load_network():
 def load_images(obj):
     # list images
     images_color = []
-    filename = os.path.join(args.imgdir.format(obj), args.color_name)
+    filename = os.path.join(args.imgdir % int(obj), args.color_name)
 
     print(f'getting images from {filename}')
     files = glob.glob(filename)
@@ -199,6 +199,7 @@ def load_images(obj):
     else:
         index_images = range(len(images_color))
 
+    return images_color, images_depth, index_images
 
 if __name__ == '__main__':
     intrinsic = np.array(
@@ -261,11 +262,13 @@ if __name__ == '__main__':
         print(f"Intrinsic matrix: \n{dataset._intrinsic_matrix}")
 
     
+    # prepare network
+    network = load_network()
+    
     for obj in classes:
         images_color, images_depth, index_images = load_images(obj)
 
-        # prepare network
-        network = load_network()
+
 
         # prepare renderer
         print('loading 3D models')
@@ -277,7 +280,8 @@ if __name__ == '__main__':
         test_data = init_tensors()
 
         
-        result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{obj:06d}/scene_gt.json'
+        result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{int(obj):06d}/scene_gt.json'
+        print(f'fetching poses from {result_file}')        
         with open(result_file, 'r') as f:
             results = json.load(f)
         
@@ -326,8 +330,8 @@ if __name__ == '__main__':
             # construct pose input to the network
             poses_input = np.zeros((1, 9), dtype=np.float32)
             # class id in DeepIM starts with 0
-            poses_input[:, 1] = 0
-            poses_input[:, 2:] = poses
+            poses_input[0, 1] = int(obj) - 1
+            poses_input[0:, 2:] = poses
 
             # run network 
             im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)

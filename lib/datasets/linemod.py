@@ -34,8 +34,10 @@ class LinemodDataset(data.Dataset, datasets.imdb):
         self._image_set = image_set
         self._model_path = os.path.join(datasets.ROOT_DIR, 'data', 'models')
 
-        self._classes_all = ["{:0>6d}".format(i + 1) for i in range(1)]
+        self._classes_all = ["{:0>6d}".format(i + 1) for i in range(15)]
+        self._classes = self._classes_all
         self._num_classes_all = len(self._classes_all)
+        
         # TODO: INVESTIGATE
         self._class_colors_all = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255), \
                               (0, 0, 128), (0, 128, 0), (128, 0, 0), (128, 128, 0), (128, 0, 128), (0, 128, 128), \
@@ -51,8 +53,7 @@ class LinemodDataset(data.Dataset, datasets.imdb):
         self._height = 480
 
         # select a subset of classes
-        self._classes = [self._classes_all[i] for i in cfg.TRAIN.CLASSES]
-        self._num_classes = len(self._classes)
+        self._num_classes = len(self._classes_all)
         self._class_colors = [self._class_colors_all[i] for i in cfg.TRAIN.CLASSES]
         self._symmetry = self._symmetry_all[cfg.TRAIN.CLASSES]
         self._extents = self._extents_all[cfg.TRAIN.CLASSES]
