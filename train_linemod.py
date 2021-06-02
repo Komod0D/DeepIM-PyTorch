@@ -115,7 +115,6 @@ def parse_args():
     return args
 
 
-
 def init_tensors():
 
     num = dataset.num_classes
@@ -153,46 +152,69 @@ def init_tensors():
     return test_data
 
 
-
 def generate_training(classes):
+    batch_size = 64
     for c in classes:
         images_color, images_depth, index_images = load_images(c)
-        
-        for im_color in images_color:
 
-            num = 1
-            height = 480
-            width = 640
+        img_batch = []
+        info_batch = []
+        for path in images_color:
+            if len(img_batch) < 64:
+                img_batch.append(pad_im(cv2.imread(path, cv2.IMREAD_COLOR), 16)[np.newaxis, :])
+            else:
+                im_tensor = torch.from_numpy(np.vstack(img_batch)).float() / 255.0
+                im_tensor -= cfg.PIXEL_MEAN
+                im_cuda_color = im_tensor.cuda()
 
-            # construct sample
-            im_tensor = torch.from_numpy(im_color).float() / 255.0
-            im_tensor -= cfg.PIXEL_MEAN
-            im_cuda_color = im_tensor.cuda()
+                im_cuda_depth = im_cuda_color.clone().detach()
 
-            im_cuda_depth = im_cuda_color.clone().detach()
-            
-            # construct the meta data
-            K = dataset._intrinsic_matrix
-            Kinv = np.linalg.pinv(K)
-            meta_data_blob = np.zeros(18, dtype=np.float32)
-            meta_data_blob[0:9] = K.flatten()
-            meta_data_blob[9:18] = Kinv.flatten()
-            label_blob = np.zeros((dataset.num_classes, height, width), dtype=np.float32)
-            gt_boxes = np.zeros((num, 5), dtype=np.float32)
-            im_info = np.array([im_color.shape[0], im_color.shape[1], cfg.TRAIN.SCALES_BASE[0]], dtype=np.float32)
+                # construct the meta data
+                K = dataset._intrinsic_matrix
+                Kinv = np.linalg.pinv(K)
+                meta_data_blob = np.zeros(18, dtype=np.float32)
+                meta_data_blob[0:9] = K.flatten()
+                meta_data_blob[9:18] = Kinv.flatten()
+                label_blob = np.zeros((dataset.num_classes, height, width), dtype=np.float32)
+                gt_boxes = np.zeros((num, 5), dtype=np.float32)
+                im_info = np.array([im_color.shape[0], im_color.shape[1], cfg.TRAIN.SCALES_BASE[0]], dtype=np.float32)
+
+                poses = results[str(num)][0]
+
+                rotation = np.array(poses['cam_R_m2c']).reshape((3, 3))
+                dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
+                rotation_d = dr @ rotation
+
+                translation = np.array(poses['cam_t_m2c'])
+                t_dev = np.abs(translation) / 20
+                dt = np.random.random(size=(3,)) * t_dev
+                translation_d = translation + dt
+
+                # construct pose input to the network
+                poses_input = np.zeros((1, 9), dtype=np.float32)
+                # class id in DeepIM starts with 0
+                poses_input[0, 1] = int(obj) - 1
+                poses_input[0:, 2:] = poses
+
+                yield img_batch
+                img_batch.clear()
+
+
+
 
             sample = {'image_color': im_cuda_color.unsqueeze(0),
                   'image_depth': im_cuda_depth.unsqueeze(0),
                   'meta_data': torch.from_numpy(meta_data_blob[np.newaxis,:]),
                   'label_blob': torch.from_numpy(label_blob[np.newaxis,:]),
-                  'poses': torch.from_numpy(poses_est[np.newaxis,:]),
+                  'poses': torch.from_numpy(poses_input[np.newaxis, :]),
                   'extents': torch.from_numpy(dataset._extents[np.newaxis,:]),
                   'points': torch.from_numpy(dataset._point_blob[np.newaxis,:]),
                   'gt_boxes': torch.from_numpy(gt_boxes[np.newaxis,:]),
-                  'poses_result': torch.from_numpy(poses_est[np.newaxis,:]),
-                  'im_info': torch.from_numpy(im_info[np.newaxis,:])}
-            
-            
+                  'poses_result': torch.from_numpy(poses_input[np.newaxis,:]),
+                  'im_info': torch.from_numpy(im_info[np.newaxis,:]),
+                      'mask': torch.from_numpy(np.ones_like(im_color))}
+
+
             im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
             print(images_color[i])
             if len(images_depth) > 0 and osp.exists(images_depth[i]):
@@ -221,13 +243,12 @@ def generate_training(classes):
             dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
             print(f'disturbing rotation by {dr}')
             rotation = dr @ rotation
-            
+
             translation = np.array(poses['cam_t_m2c'])
             t_dev = np.abs(translation) / 20
             dt = np.random.random(size=(3,)) * t_dev
             translation += dt
             print(f'disturbing translation by {dt}')
-            
 
 
 def load_network():
@@ -245,6 +266,7 @@ def load_network():
     cudnn.benchmark = True
     network.eval()
     return network
+
 
 def load_images(obj):
     # list images
@@ -277,11 +299,8 @@ def load_images(obj):
 
     return images_color, images_depth, index_images
 
+
 if __name__ == '__main__':
-    intrinsic = np.array(
-    [[525, 0, 0],
-     [0, 575, 0],
-     [325, 225, 1]]).T
     K = np.array([572.4114, 0.0, 325.2611, 0.0, 573.57043, 242.04899, 0.0, 0.0, 1.0]).reshape((3, 3))
     intrinsic = K
     args = parse_args()
@@ -395,7 +414,7 @@ if __name__ == '__main__':
             translation = np.array(poses['cam_t_m2c'])
             t_dev = np.abs(translation) / 20
             dt = np.random.random(size=(3,)) * t_dev
-            translation_d += dt
+            translation_d = translation + dt
             print(f'disturbing translation by {dt}')
             
 
