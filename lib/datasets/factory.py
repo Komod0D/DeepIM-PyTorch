@@ -26,7 +26,6 @@ for split in ['train', 'val', 'keyframe', 'trainval', 'debug']:
 # ycb object dataset
 for split in ['train', 'test']:
     name = 'ycb_object_{}'.format(split)
-    print(name)
     __sets[name] = (lambda split=split:
             datasets.YCBObject(split))
 
@@ -34,14 +33,12 @@ for split in ['train', 'test']:
 for split in ['train_1', 'train_2', 'train_3', 'train_4', 'train_5', 'test', 'all', 'train_block_median', 'train_block_median_azure', 'train_block_median_demo', 'train_block_median_azure_demo', 'train_table', 'all_ycb', 
               'debug', 'train_block', 'train_block_azure', 'train_block_big_sim', 'train_block_median_sim', 'train_block_small_sim']:
     name = 'ycb_self_supervision_{}'.format(split)
-    print(name)
     __sets[name] = (lambda split=split:
             datasets.YCBSelfSupervision(split))
 
 # background dataset
 for split in ['coco', 'rgbd', 'nvidia', 'table', 'isaac', 'texture', 'sunrgbd']:
     name = 'background_{}'.format(split)
-    print(name)
     __sets[name] = (lambda split=split:
             datasets.BackgroundDataset(split))
 
@@ -53,7 +50,6 @@ for setup in ('s0', 's1', 's2', 's3'):
 
 for split in ["test"]:
     name = "swisscube_{}".format(split)
-    print(name)
     __sets[name] = (lambda split=split: SwissCubeDataset(split))
 
 for split in ["test"]:

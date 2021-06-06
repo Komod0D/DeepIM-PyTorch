@@ -153,21 +153,25 @@ def init_tensors():
 
 
 def generate_training(classes):
-    batch_size = 64
+    batch_size = cfg.TRAIN.IMS_PER_BATCH
+
     for c in classes:
+
+        result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{int(c):06d}/scene_gt.json'
+        print(f'fetching poses from {result_file}')
+        with open(result_file, 'r') as f:
+            results = json.load(f)
+
         images_color, images_depth, index_images = load_images(c)
 
         img_batch = []
-        info_batch = []
         for path in images_color:
-            if len(img_batch) < 64:
-                img_batch.append(pad_im(cv2.imread(path, cv2.IMREAD_COLOR), 16)[np.newaxis, :])
-            else:
-                im_tensor = torch.from_numpy(np.vstack(img_batch)).float() / 255.0
-                im_tensor -= cfg.PIXEL_MEAN
-                im_cuda_color = im_tensor.cuda()
+            img_color = pad_im(cv2.imread(path, cv2.IMREAD_COLOR), 16)[np.newaxis, :]
+            img_batch.append(img_color)
 
-                im_cuda_depth = im_cuda_color.clone().detach()
+            if len(img_batch) == batch_size:
+                im_stack = np.vstack(img_batch) - cfg.PIXEL_MEAN / 255.0
+                im_depth = im_stack.copy()
 
                 # construct the meta data
                 K = dataset._intrinsic_matrix
@@ -175,9 +179,11 @@ def generate_training(classes):
                 meta_data_blob = np.zeros(18, dtype=np.float32)
                 meta_data_blob[0:9] = K.flatten()
                 meta_data_blob[9:18] = Kinv.flatten()
-                label_blob = np.zeros((dataset.num_classes, height, width), dtype=np.float32)
+                label_blob = np.zeros((1, 480, 640), dtype=np.float32)
                 gt_boxes = np.zeros((num, 5), dtype=np.float32)
-                im_info = np.array([im_color.shape[0], im_color.shape[1], cfg.TRAIN.SCALES_BASE[0]], dtype=np.float32)
+                im_info = np.array([480, 640, cfg.TRAIN.SCALES_BASE[0]], dtype=np.float32)
+
+
 
                 poses = results[str(num)][0]
 
@@ -190,65 +196,29 @@ def generate_training(classes):
                 dt = np.random.random(size=(3,)) * t_dev
                 translation_d = translation + dt
 
+                rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation_d).as_quat()
+                poses = np.concatenate((rotation_q, translation_d))
+
                 # construct pose input to the network
                 poses_input = np.zeros((1, 9), dtype=np.float32)
                 # class id in DeepIM starts with 0
                 poses_input[0, 1] = int(obj) - 1
                 poses_input[0:, 2:] = poses
 
-                yield img_batch
+                sample = {'image_color': im_cuda_color.unsqueeze(0),
+                          'image_depth': im_cuda_depth.unsqueeze(0),
+                          'meta_data': torch.from_numpy(meta_data_blob[np.newaxis, :]),
+                          'label_blob': torch.from_numpy(label_blob[np.newaxis, :]),
+                          'poses': torch.from_numpy(poses_input[np.newaxis, :]),
+                          'extents': torch.from_numpy(dataset._extents[np.newaxis, :]),
+                          'points': torch.from_numpy(dataset._point_blob[np.newaxis, :]),
+                          'gt_boxes': torch.from_numpy(gt_boxes[np.newaxis, :]),
+                          'poses_result': torch.from_numpy(poses_input[np.newaxis, :]),
+                          'im_info': torch.from_numpy(im_info[np.newaxis, :]),
+                          'mask': torch.from_numpy(np.ones_like(img_color))}
+
+                yield sample
                 img_batch.clear()
-
-
-
-
-            sample = {'image_color': im_cuda_color.unsqueeze(0),
-                  'image_depth': im_cuda_depth.unsqueeze(0),
-                  'meta_data': torch.from_numpy(meta_data_blob[np.newaxis,:]),
-                  'label_blob': torch.from_numpy(label_blob[np.newaxis,:]),
-                  'poses': torch.from_numpy(poses_input[np.newaxis, :]),
-                  'extents': torch.from_numpy(dataset._extents[np.newaxis,:]),
-                  'points': torch.from_numpy(dataset._point_blob[np.newaxis,:]),
-                  'gt_boxes': torch.from_numpy(gt_boxes[np.newaxis,:]),
-                  'poses_result': torch.from_numpy(poses_input[np.newaxis,:]),
-                  'im_info': torch.from_numpy(im_info[np.newaxis,:]),
-                      'mask': torch.from_numpy(np.ones_like(im_color))}
-
-
-            im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-            print(images_color[i])
-            if len(images_depth) > 0 and osp.exists(images_depth[i]):
-                depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
-                depth = depth.astype('float') / 1000.0
-                print(images_depth[i])
-            else:
-                depth = None
-                print('no depth image')
-
-            # rescale image if necessary
-            if cfg.TEST.SCALES_BASE[0] != 1:
-                im_scale = cfg.TEST.SCALES_BASE[0]
-                im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-                if depth is not None:
-                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
-
-            # read initial pose estimation
-            name = os.path.basename(images_color[i])
-
-
-            num = int(name[:-4])
-            poses = results[str(num)][0]
-
-            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
-            dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
-            print(f'disturbing rotation by {dr}')
-            rotation = dr @ rotation
-
-            translation = np.array(poses['cam_t_m2c'])
-            t_dev = np.abs(translation) / 20
-            dt = np.random.random(size=(3,)) * t_dev
-            translation += dt
-            print(f'disturbing translation by {dt}')
 
 
 def load_network():
@@ -373,68 +343,14 @@ if __name__ == '__main__':
 
         # initialize tensors for testing
         test_data = init_tensors()
+        background = np.zeros((3, 480, 640))
 
-        
-        result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{int(obj):06d}/scene_gt.json'
-        print(f'fetching poses from {result_file}')        
-        with open(result_file, 'r') as f:
-            results = json.load(f)
-        
-        # for each image
-        for i in index_images:
-            im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-            print(images_color[i])
-            if len(images_depth) > 0 and osp.exists(images_depth[i]):
-                depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
-                depth = depth.astype('float') / 1000.0
-                print(images_depth[i])
-            else:
-                depth = None
-                print('no depth image')
+        import itertools
 
-            # rescale image if necessary
-            if cfg.TEST.SCALES_BASE[0] != 1:
-                im_scale = cfg.TEST.SCALES_BASE[0]
-                im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-                if depth is not None:
-                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
+        train_loader = generate_training()
+        background_loader = itertools.repeat(background)
+        optimizer = torch.optim.Adam(network.parameters(), lr=0.01)
+        epoch = 0
+        num_iterations = 4
 
-            # read initial pose estimation
-            name = os.path.basename(images_color[i])
-
-
-            num = int(name[:-4])
-            poses = results[str(num)][0]
-
-            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
-            dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
-            print(f'disturbing rotation by {dr}')
-            rotation_d = dr @ rotation
-            
-            translation = np.array(poses['cam_t_m2c'])
-            t_dev = np.abs(translation) / 20
-            dt = np.random.random(size=(3,)) * t_dev
-            translation_d = translation + dt
-            print(f'disturbing translation by {dt}')
-            
-
-            rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation_d).as_quat()
-
-            poses = np.concatenate((rotation_q, translation_d))
-
-            # construct pose input to the network
-            poses_input = np.zeros((1, 9), dtype=np.float32)
-            # class id in DeepIM starts with 0
-            poses_input[0, 1] = int(obj) - 1
-            poses_input[0:, 2:] = poses
-            
-            background = np.zeros((3, 480, 640))
-            
-            import itertools
-
-            train_loader = generate_training()
-            background_loader = itertools.repeat(background)
-            optimizer = torch.optim.Adam(network.parameters(), lr=0.01)
-            epoch = 0
-            num_iterations = 4
-            
+        network = train()

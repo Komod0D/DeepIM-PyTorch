@@ -12,7 +12,8 @@ TRAIN:
   GAMMA: 0.1
   SCALES_BASE: !!python/tuple [1.0]
   IMS_PER_BATCH: 16
-  CLASSES: !!python/tuple [0]
+  MAX_OBJECT_PER_IMAGE: 1
+  CLASSES: !!python/tuple [0, 1, 2, 3, 4]
   SNAPSHOT_INFIX: ycb_video_all
   SNAPSHOT_PREFIX: flownets
   SNAPSHOT_EPOCHS: 1
