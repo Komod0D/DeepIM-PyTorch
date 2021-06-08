@@ -19,17 +19,52 @@ def to_homo(rotation, translation):
     return transform
 
 
+def quaternion2rotation(quat):
+        '''
+        Do not use the quat2dcm() function in the SPEED utils.py, it is not rotation
+        '''
+        assert (len(quat) == 4)
+        # normalize first
+        quat = quat / np.linalg.norm(quat)
+        a, b, c, d = quat
+
+        a2 = a * a
+        b2 = b * b
+        c2 = c * c
+        d2 = d * d
+        ab = a * b
+        ac = a * c
+        ad = a * d
+        bc = b * c
+        bd = b * d
+        cd = c * d
+
+        # s = a2 + b2 + c2 + d2
+
+        m0 = a2 + b2 - c2 - d2
+        m1 = 2 * (bc - ad)
+        m2 = 2 * (bd + ac)
+        m3 = 2 * (bc + ad)
+        m4 = a2 - b2 + c2 - d2
+        m5 = 2 * (cd - ab)
+        m6 = 2 * (bd - ac)
+        m7 = 2 * (cd + ab)
+        m8 = a2 - b2 - c2 + d2
+
+        return np.array([m0, m1, m2, m3, m4, m5, m6, m7, m8]).reshape(3, 3)
+
+
 class Renderer:
     def __init__(self):
         os.environ['PYOPENGL_PLATFORM'] = 'egl'
         tscene = trimesh.load('/cvlabdata2/cvlab/datasets_protopap/deepim/data/models/swisscube/swisscube.obj')
         mesh = pyrender.Mesh.from_trimesh(list(tscene.geometry.values()), smooth=False)
 
-        self.renderer = pyrender.OffscreenRenderer(viewport_width=1024, viewport_height=1024, point_size=1.0)
+        self.renderer = pyrender.OffscreenRenderer(viewport_width=2048, viewport_height=2048, point_size=1.0)
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
         light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=1000000.0)
-        cam = pyrender.IntrinsicsCamera(607.57, 607.57, 512, 512, zfar=2000)
+        cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=2000)
         cam_rot = R.from_euler('y', 180, degrees=True).as_matrix()
         cam_matrix = to_homo(cam_rot, np.zeros((3,)))
 
@@ -65,11 +100,11 @@ class Renderer:
 
     def render_(self):
         color, depth = self.renderer.render(self.scene)
-        """
+        
         color = cv2.resize(color, (640, 640), cv2.INTER_AREA)
         color = color[80:560]
-        """
-        return color
+        
+        return np.flip(color, (0, 1)).copy()
 
     def render(self, cls_indices, image_tensor, seg_tensor, pc2_tensor=None):
         rgb = self.render_()
@@ -92,31 +127,38 @@ class Renderer:
 
 
 def get_next(iteritems):
-    """"
+    
     img, pose = next(iteritems)
     img = os.path.join(img.split('/')[0], 'Test', img.split('/')[1])
     img = cv2.imread(img)
     img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
     img = img[80:560]
-    translation = pose['t']
-    rotation = pose['r']
-    """
+    rotation = pose['rotation_m2c']
+    translation = pose['translation_m2c']
+    
 
-    img_path = next(iteritems)
+    """
+    img_path = next(iteritems).strip()
     full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
     num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
     img = cv2.imread(full_path)
+    print(img)
+    print(full_path)
 
-    seq_name = os.path.split(full_path)[:-2]
-    poses_name = os.path.join(*seq_name, 'scene_gt.json')
+    seq_name = os.path.dirname(os.path.dirname(full_path))
+    
+    poses_name = os.path.join(seq_name, 'scene_gt.json')
     with open(poses_name, 'r') as j:
         poses = json.load(j)
 
-    pose = poses[num]
+    
+    pose = poses[num][0]
     translation = np.array(pose['cam_t_m2c'])
     rotation = np.array(pose['cam_R_m2c']).reshape((3, 3))
+    rotation = R.from_matrix(rotation).as_quat()
+    """
 
-    return img, translation, R.from_matrix(rotation).as_quat()
+    return img, translation, rotation
 
 
 if __name__ == '__main__':
@@ -124,16 +166,26 @@ if __name__ == '__main__':
 
     import os
     import json
-
+    
+    """
     os.chdir('/cvlabdata2/home/yhu/data/SwissCube_1.0')
     with open('testing.txt', 'r') as f:
         images = f.readlines()
 
     iteritems = iter(images)
     img, translation, rotation = get_next(iteritems)
+    """
 
+    os.chdir('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal')
+    with open('data.json', 'r') as f:
+        poses = json.load(f)
+
+    iteritems = iter(poses.items())
+    
+    img, translation, rotation = get_next(iteritems)
     cv2.imshow('image', img)
     x, y, z = translation
+    dx, dy, dz = 0
 
     while True:
         a, b, c, d = rotation
@@ -165,14 +217,21 @@ if __name__ == '__main__':
         elif key == 113:
             z -= 10
         elif key == 81:
-            rotation = R.from_euler('y', -15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', -15, degrees=True).as_matrix()
             rotation = R.from_matrix(rotation).as_quat()
         elif key == 83:
-            rotation = R.from_euler('y', 15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', 15, degrees=True).as_matrix()
             rotation = R.from_matrix(rotation).as_quat()
         elif key == 82:
-            rotation = R.from_euler('x', -15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', -15, degrees=True).as_matrix()
             rotation = R.from_matrix(rotation).as_quat()
         elif key == 84:
-            rotation = R.from_euler('x', 15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', 15, degrees=True).as_matrix()
             rotation = R.from_matrix(rotation).as_quat()
+        elif key == 85:
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', 15, degrees=True).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()
+        elif key == 86:
+            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', -15, degrees=True).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()
+
