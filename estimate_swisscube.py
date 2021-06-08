@@ -258,7 +258,7 @@ if __name__ == '__main__':
             # read initial pose estimation
             name = os.path.basename(images_color[i])
 
-            pose = os.path.join(images_color[i], 'posecnn_results', os.path.basename(images_color[i]) + '.bmp.mat')
+            pose = os.path.join('/cvlabdata2/home/protopap/deepim/data/images/1b/posecnn_results', os.path.basename(images_color[i]) + '.mat')
             pose = loadmat(pose)['pose']
             translation, rotation_q = pose[:3], pose[3:]
 
