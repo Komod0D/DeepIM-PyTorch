@@ -51,11 +51,11 @@ class SwissCubeDataset(data.Dataset, datasets.imdb):
         self._height = 2048
 
         # select a subset of classes
-        self._classes = [self._classes_all[i] for i in cfg.TRAIN.CLASSES]
+        self._classes = ['swisscube']
         self._num_classes = len(self._classes)
-        self._class_colors = [self._class_colors_all[i] for i in cfg.TRAIN.CLASSES]
-        self._symmetry = self._symmetry_all[cfg.TRAIN.CLASSES]
-        self._extents = self._extents_all[cfg.TRAIN.CLASSES]
+        self._class_colors = self._class_colors_all
+        self._symmetry = self._symmetry_all
+        self._extents = self._extents_all
         self._points, self._points_all, self._point_blob = self._load_object_points()
 
         # 3D model paths

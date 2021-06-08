@@ -19,6 +19,7 @@ import os.path as osp
 import numpy as np
 import cv2
 import scipy.io
+from scipy.io import loadmat
 from scipy.spatial.transform import Rotation as R
 import glob
 
@@ -172,7 +173,7 @@ def load_network():
 def load_images(obj):
     # list images
     images_color = []
-    filename = os.path.join(args.imgdir % int(obj), args.color_name)
+    filename = os.path.join(args.imgdir, args.color_name)
 
     print(f'getting images from {filename}')
     files = glob.glob(filename)
@@ -239,8 +240,7 @@ if __name__ == '__main__':
 
         # prepare renderer
         print('loading 3D models')
-        cfg.renderer = RendererAdapter(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT)
-        cfg.renderer.load_object(int(obj))
+        cfg.renderer = Renderer()
 
 
         # initialize tensors for testing
@@ -253,50 +253,27 @@ if __name__ == '__main__':
         
         # for each image
         for i in index_images:
+
             im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-            print(images_color[i])
-            if len(images_depth) > 0 and osp.exists(images_depth[i]):
-                depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
-                depth = depth.astype('float') / 1000.0
-                print(images_depth[i])
-            else:
-                depth = None
-                print('no depth image')
 
             # rescale image if necessary
             if cfg.TEST.SCALES_BASE[0] != 1:
                 im_scale = cfg.TEST.SCALES_BASE[0]
                 im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-                if depth is not None:
-                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
-
+                
             # read initial pose estimation
             name = os.path.basename(images_color[i])
 
-
-            num = int(name[:-4])
-            poses = results[str(num)][0]
-
-            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
-            dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
-            print(f'disturbing rotation by {dr}')
-            rotation = dr @ rotation
-            
-            translation = np.array(poses['cam_t_m2c'])
-            t_dev = np.abs(translation) / 20
-            dt = np.random.random(size=(3,)) * t_dev
-            translation += dt
-            print(f'disturbing translation by {dt}')
-            
-
-            rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
+            pose = os.path.join(images_color[i], 'posecnn_results', os.path.basename(images_color[i]) + '.bmp.mat')
+            pose = loadmat(pose)['pose']
+            translation, rotation_q = pose[:3], pose[3:]
 
             poses = np.concatenate((rotation_q, translation))
 
             # construct pose input to the network
             poses_input = np.zeros((1, 9), dtype=np.float32)
             # class id in DeepIM starts with 0
-            poses_input[0, 1] = int(obj) - 1
+            poses_input[0, 1] = 0
             poses_input[0:, 2:] = poses
 
             # run network 
