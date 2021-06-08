@@ -185,9 +185,12 @@ if __name__ == '__main__':
     img, translation, rotation = get_next(iteritems)
     cv2.imshow('image', img)
     x, y, z = translation
-    dx, dy, dz = 0
+    dx, dy, dz = 0, 0, 0
 
     while True:
+
+        rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('xyz', [dx, dy, dz], degrees=True).as_matrix()
+        rotation = R.from_matrix(rotation).as_quat()
         a, b, c, d = rotation
         pose = [x, y, z, a, b, c, d]
         r.set_pose(pose)
@@ -217,21 +220,15 @@ if __name__ == '__main__':
         elif key == 113:
             z -= 10
         elif key == 81:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dy -= 15
         elif key == 83:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dy += 15
         elif key == 82:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dx -= 15
         elif key == 84:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dx += 15
         elif key == 85:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dz += 15
         elif key == 86:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dz -= 15
 
