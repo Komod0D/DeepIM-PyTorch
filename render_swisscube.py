@@ -188,7 +188,7 @@ if __name__ == '__main__':
     dx, dy, dz = 0, 0, 0
 
     while True:
-
+        print(dx, dy, dz)
         rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('xyz', [dx, dy, dz], degrees=True).as_matrix()
         rotation = R.from_matrix(rotation).as_quat()
         a, b, c, d = rotation
