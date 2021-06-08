@@ -29,7 +29,7 @@ class Renderer:
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
         light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=100.0)
-        cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=1000)
+        cam = pyrender.IntrinsicsCamera(4000, 4000, 320, 240, zfar=1000)
         self.nm = pyrender.Node(mesh=mesh, matrix=np.eye(4))
         nl = pyrender.Node(light=light, matrix=np.eye(4))
         nc = pyrender.Node(camera=cam, matrix=np.eye(4))
@@ -80,3 +80,32 @@ class Renderer:
 
         if (pc2_tensor is not None):
             pc2_tensor.copy_(image_tensor)
+
+
+if __name__ == '__main__':
+    r = Renderer()
+
+
+    x, y, z = 0, 0, 0
+
+    while (True):
+        r.set_pose([0, 0, 0, 1, x, y, z])
+
+        color = r.render()
+
+        cv2.imshow('render', color)
+        key = cv2.waitKey(0)
+        if key == 27:
+            break
+        elif key == 119:
+            y += 10
+        elif key == 115:
+            y -= 10
+        elif key == 97:
+            x -= 10
+        elif key == 100:
+            x += 10
+        elif key == 101:
+            z += 10
+        elif key == 113:
+            z -= 10
