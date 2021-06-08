@@ -242,15 +242,9 @@ if __name__ == '__main__':
         print('loading 3D models')
         cfg.renderer = Renderer()
 
-
         # initialize tensors for testing
         test_data = init_tensors()
 
-        
-        print(f'fetching poses from {result_file}')        
-        with open(result_file, 'r') as f:
-            results = json.load(f)
-        
         # for each image
         for i in index_images:
 
@@ -277,7 +271,7 @@ if __name__ == '__main__':
             poses_input[0:, 2:] = poses
 
             # run network 
-            im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
+            im_pose_color, pose_result = test_image(network, dataset, im, im, poses_input, test_data)
 
             # save result
             if not cfg.TEST.VISUALIZE:

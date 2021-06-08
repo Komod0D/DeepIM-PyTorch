@@ -14,39 +14,6 @@ from bop_toolkit_lib import view_sampler
 import os
 
 
-
-def quaternion2rotation(quat):
-    '''
-    Do not use the quat2dcm() function in the SPEED utils.py, it is not rotation
-    '''
-    assert (len(quat) == 4)
-    # normalize first
-    quat = quat / np.linalg.norm(quat)
-    a, b, c, d = quat
-    a2 = a * a
-    b2 = b * b
-    c2 = c * c
-    d2 = d * d
-    ab = a * b
-    ac = a * c
-    ad = a * d
-    bc = b * c
-    bd = b * d
-    cd = c * d
-        
-    m0 = a2 + b2 - c2 - d2
-    m1 = 2 * (bc - ad)
-    m2 = 2 * (bd + ac)
-    m3 = 2 * (bc + ad)
-    m4 = a2 - b2 + c2 - d2
-    m5 = 2 * (cd - ab)
-    m6 = 2 * (bd - ac)
-    m7 = 2 * (cd + ab)
-    m8 = a2 - b2 - c2 + d2
-        
-    return np.array([m0, m1, m2, m3, m4, m5, m6, m7, m8]).reshape(3, 3)
-
-
 def pose_to_view(pose):
     x, y, z, a, b, c, d = pose
     translation = np.array([x, y, z])
@@ -56,7 +23,7 @@ def pose_to_view(pose):
     return rot_mat, translation
 
 
-class RendererAdapter():
+class RendererAdapter:
     def __init__(self, width, height):
         self.width, self.height = width, height
         self.renderer = renderer.create_renderer(width, height, 'python', mode='rgb', shading='phong')
@@ -104,6 +71,6 @@ class RendererAdapter():
         temp[:, :, 3] = np.ones((rgb.shape[0], rgb.shape[1]))
         seg_t = torch.from_numpy(temp)
         seg_tensor.copy_(seg_t.flip(0))
-        
+
         if (pc2_tensor is not None):
             pc2_tensor.copy_(image_tensor)
