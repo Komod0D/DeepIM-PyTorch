@@ -36,8 +36,8 @@ sys.path.append('../../deepim')
 from bop_toolkit_lib.renderer_adapter import RendererAdapter
 import json
 
-
 classes = [f'{obj:06d}' for obj in range(5, 16)]
+
 
 def parse_args():
     """
@@ -115,9 +115,7 @@ def parse_args():
     return args
 
 
-
 def init_tensors():
-
     num = dataset.num_classes
     height = cfg.TRAIN.SYN_HEIGHT
     width = cfg.TRAIN.SYN_WIDTH
@@ -153,9 +151,7 @@ def init_tensors():
     return test_data
 
 
-
 def load_network():
-
     if args.pretrained:
         network_data = torch.load(args.pretrained)
         print("=> using pre-trained network '{}'".format(args.pretrained))
@@ -169,6 +165,7 @@ def load_network():
     cudnn.benchmark = True
     network.eval()
     return network
+
 
 def load_images(obj):
     # list images
@@ -201,11 +198,12 @@ def load_images(obj):
 
     return images_color, images_depth, index_images
 
+
 if __name__ == '__main__':
     intrinsic = np.array(
-    [[525, 0, 0],
-     [0, 575, 0],
-     [325, 225, 1]]).T
+        [[525, 0, 0],
+         [0, 575, 0],
+         [325, 225, 1]]).T
     K = np.array([572.4114, 0.0, 325.2611, 0.0, 573.57043, 242.04899, 0.0, 0.0, 1.0]).reshape((3, 3))
     intrinsic = K
     args = parse_args()
@@ -261,30 +259,25 @@ if __name__ == '__main__':
         dataset._intrinsic_matrix = K
         print(f"Intrinsic matrix: \n{dataset._intrinsic_matrix}")
 
-    
     # prepare network
     network = load_network()
-    
+
     for obj in classes:
         images_color, images_depth, index_images = load_images(obj)
-
-
 
         # prepare renderer
         print('loading 3D models')
         cfg.renderer = RendererAdapter(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT)
         cfg.renderer.load_object(int(obj))
 
-
         # initialize tensors for testing
         test_data = init_tensors()
 
-        
         result_file = f'/cvlabdata2/cvlab/datasets_protopap/linemod/test/{int(obj):06d}/scene_gt.json'
-        print(f'fetching poses from {result_file}')        
+        print(f'fetching poses from {result_file}')
         with open(result_file, 'r') as f:
             results = json.load(f)
-        
+
         # for each image
         for i in index_images:
             im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
@@ -302,26 +295,25 @@ if __name__ == '__main__':
                 im_scale = cfg.TEST.SCALES_BASE[0]
                 im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
                 if depth is not None:
-                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
+                    depth = pad_im(
+                        cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
 
             # read initial pose estimation
             name = os.path.basename(images_color[i])
 
-
             num = int(name[:-4])
             poses = results[str(num)][0]
 
-            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
+            rotation = np.array(poses['cam_R_m2c']).reshape((3, 3))
             dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
             print(f'disturbing rotation by {dr}')
             rotation = dr @ rotation
-            
+
             translation = np.array(poses['cam_t_m2c'])
             t_dev = np.abs(translation) / 20
             dt = np.random.random(size=(3,)) * t_dev
             translation += dt
             print(f'disturbing translation by {dt}')
-            
 
             rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
 

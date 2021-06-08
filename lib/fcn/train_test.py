@@ -169,17 +169,6 @@ def render_poses(intrinsic_matrix, label_blob, pose_tgt_blob, pose_src_blob, poi
         cfg.renderer.set_poses([qt])
         cfg.renderer.render([cls_index], image_tensor, seg_tensor, pc2_tensor=pcloud_tensor)
 
-
-
-        #TODO remove
-        """
-        img = seg_tensor.detach().cpu().numpy()[:, :, :3] * 255
-        cv2.imshow("segmentation", img)
-        cv2.waitKey(0)
-        """
-        #TODO end remove
-
-
         image_tensor = image_tensor.flip(0)
         pcloud_tensor = pcloud_tensor.flip(0)
         # mask the target point cloud
