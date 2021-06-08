@@ -15,7 +15,7 @@ def to_homo(rotation, translation):
     transform = np.eye(4)
     transform[:3, :3] = rotation
     transform[:3, 3] = translation
-    
+
     return transform
 
 
@@ -25,20 +25,22 @@ class Renderer:
         tscene = trimesh.load('/cvlabdata2/cvlab/datasets_protopap/deepim/data/models/swisscube/swisscube.obj')
         mesh = pyrender.Mesh.from_trimesh(list(tscene.geometry.values()), smooth=False)
 
-        self.renderer = pyrender.OffscreenRenderer(viewport_width=2048, viewport_height=2048, point_size=1.0)
+        self.renderer = pyrender.OffscreenRenderer(viewport_width=1024, viewport_height=1024, point_size=1.0)
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
         light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=1000000.0)
-        cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=2000)
-        
+        cam = pyrender.IntrinsicsCamera(607.57, 607.57, 512, 512, zfar=2000)
+        cam_rot = R.from_euler('y', 180, degrees=True).as_matrix()
+        cam_matrix = to_homo(cam_rot, np.zeros((3,)))
+
         self.nm = pyrender.Node(mesh=mesh, matrix=np.eye(4))
         nl = pyrender.Node(light=light, matrix=np.eye(4))
-        nc = pyrender.Node(camera=cam, matrix=np.eye(4))
+        nc = pyrender.Node(camera=cam, matrix=cam_matrix)
 
         scene.add_node(self.nm)
         scene.add_node(nl)
         scene.add_node(nc)
-        
+
         self.scene = scene
 
     def set_light_pos(self, *args):
@@ -54,20 +56,20 @@ class Renderer:
         self.set_pose(poses[0])
 
     def set_pose(self, pose):
-        
         translation, rotation_quat = pose[:3], pose[3:]
         translation = np.array(translation)
-        translation[-1] *= -1
-        
+
         rotation = R.from_quat(rotation_quat).as_matrix()
         transform = to_homo(rotation, translation)
         self.scene.set_pose(self.nm, pose=transform)
 
     def render_(self):
         color, depth = self.renderer.render(self.scene)
+        """
         color = cv2.resize(color, (640, 640), cv2.INTER_AREA)
         color = color[80:560]
-        return np.flip(color, 1)
+        """
+        return color
 
     def render(self, cls_indices, image_tensor, seg_tensor, pc2_tensor=None):
         rgb = self.render_()
@@ -89,22 +91,32 @@ class Renderer:
             pc2_tensor.copy_(image_tensor)
 
 
-
 def get_next(iteritems):
-
+    """"
     img, pose = next(iteritems)
-    
-
     img = os.path.join(img.split('/')[0], 'Test', img.split('/')[1])
     img = cv2.imread(img)
-    
     img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
     img = img[80:560]
     translation = pose['t']
     rotation = pose['r']
+    """
 
-    return img, translation, rotation
+    img_path = next(iteritems)
+    full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
+    num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
+    img = cv2.imread(full_path)
 
+    seq_name = os.path.split(full_path)[:-2]
+    poses_name = os.path.join(*seq_name, 'scene_gt.json')
+    with open(poses_name, 'r') as j:
+        poses = json.load(j)
+
+    pose = poses[num]
+    translation = np.array(pose['cam_t_m2c'])
+    rotation = np.array(pose['cam_R_m2c']).reshape((3, 3))
+
+    return img, translation, R.from_matrix(rotation).as_quat()
 
 
 if __name__ == '__main__':
@@ -112,21 +124,18 @@ if __name__ == '__main__':
 
     import os
     import json
-    os.chdir('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal')
-    with open('data.json', 'r') as f:
-        data = json.load(f)
 
-    iteritems = iter(data.items())
+    os.chdir('/cvlabdata2/home/yhu/data/SwissCube_1.0')
+    with open('testing.txt', 'r') as f:
+        images = f.readlines()
+
+    iteritems = iter(images)
     img, translation, rotation = get_next(iteritems)
-    
 
-    
     cv2.imshow('image', img)
     x, y, z = translation
 
-
-    while (True):
-
+    while True:
         a, b, c, d = rotation
         pose = [x, y, z, a, b, c, d]
         r.set_pose(pose)
