@@ -29,7 +29,7 @@ class Renderer:
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
         light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=100.0)
-        cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=1000)
+        cam = pyrender.IntrinsicsCamera(4000, 4000, 320, 240, zfar=1000)
         self.nm = pyrender.Node(mesh=mesh, matrix=np.eye(4))
         nl = pyrender.Node(light=light, matrix=np.eye(4))
         nc = pyrender.Node(camera=cam, matrix=np.eye(4))
