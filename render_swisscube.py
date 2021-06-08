@@ -25,11 +25,12 @@ class Renderer:
         tscene = trimesh.load('/cvlabdata2/cvlab/datasets_protopap/deepim/data/models/swisscube/swisscube.obj')
         mesh = pyrender.Mesh.from_trimesh(list(tscene.geometry.values()), smooth=False)
 
-        self.renderer = pyrender.OffscreenRenderer(viewport_width=640, viewport_height=480, point_size=1.0)
+        self.renderer = pyrender.OffscreenRenderer(viewport_width=2048, viewport_height=2048, point_size=1.0)
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
-        light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=100.0)
-        cam = pyrender.IntrinsicsCamera(4000, 4000, 320, 240, zfar=1000)
+        light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=1000000.0)
+        cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=2000)
+        
         self.nm = pyrender.Node(mesh=mesh, matrix=np.eye(4))
         nl = pyrender.Node(light=light, matrix=np.eye(4))
         nc = pyrender.Node(camera=cam, matrix=np.eye(4))
@@ -53,14 +54,20 @@ class Renderer:
         self.set_pose(poses[0])
 
     def set_pose(self, pose):
-        rotation_quat, translation = pose[:4], pose[4:]
+        
+        translation, rotation_quat = pose[:3], pose[3:]
+        translation = np.array(translation)
+        translation[-1] *= -1
+        
         rotation = R.from_quat(rotation_quat).as_matrix()
         transform = to_homo(rotation, translation)
         self.scene.set_pose(self.nm, pose=transform)
 
     def render_(self):
         color, depth = self.renderer.render(self.scene)
-        return color
+        color = cv2.resize(color, (640, 640), cv2.INTER_AREA)
+        color = color[80:560]
+        return np.flip(color, 1)
 
     def render(self, cls_indices, image_tensor, seg_tensor, pc2_tensor=None):
         rgb = self.render_()
@@ -82,21 +89,60 @@ class Renderer:
             pc2_tensor.copy_(image_tensor)
 
 
+
+def get_next(iteritems):
+
+    img, pose = next(iteritems)
+    
+
+    img = os.path.join(img.split('/')[0], 'Test', img.split('/')[1])
+    img = cv2.imread(img)
+    
+    img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
+    img = img[80:560]
+    translation = pose['t']
+    rotation = pose['r']
+
+    return img, translation, rotation
+
+
+
 if __name__ == '__main__':
     r = Renderer()
 
+    import os
+    import json
+    os.chdir('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal')
+    with open('data.json', 'r') as f:
+        data = json.load(f)
 
-    x, y, z = 0, 0, 0
+    iteritems = iter(data.items())
+    img, translation, rotation = get_next(iteritems)
+    
+
+    
+    cv2.imshow('image', img)
+    x, y, z = translation
+
 
     while (True):
-        r.set_pose([0, 0, 0, 1, x, y, z])
 
-        color = r.render()
+        a, b, c, d = rotation
+        pose = [x, y, z, a, b, c, d]
+        r.set_pose(pose)
+        print(R.from_quat(rotation).as_euler('xyz', degrees=True))
+        color = r.render_()
 
         cv2.imshow('render', color)
         key = cv2.waitKey(0)
         if key == 27:
             break
+        elif key == 13:
+            img, translation, rotation = get_next(iteritems)
+            x, y, z = translation
+            a, b, c, d = rotation
+
+            cv2.imshow('image', img)
         elif key == 119:
             y += 10
         elif key == 115:
@@ -109,3 +155,15 @@ if __name__ == '__main__':
             z += 10
         elif key == 113:
             z -= 10
+        elif key == 81:
+            rotation = R.from_euler('y', -15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()
+        elif key == 83:
+            rotation = R.from_euler('y', 15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()
+        elif key == 82:
+            rotation = R.from_euler('x', -15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()
+        elif key == 84:
+            rotation = R.from_euler('x', 15, degrees=True).as_matrix() @ R.from_quat(rotation).as_matrix()
+            rotation = R.from_matrix(rotation).as_quat()

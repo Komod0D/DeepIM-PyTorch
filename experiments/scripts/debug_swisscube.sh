@@ -5,7 +5,7 @@ set -e
 
 export PYTHONUNBUFFERED="True"
 
-python3 -m pdb ./tools/estimate_swisscube.py --gpu 0 \
+python3 -m pdb ./estimate_swisscube.py --gpu 0 \
   --imgdir data/images/1b/ \
   --color *.bmp \
   --network flownets \

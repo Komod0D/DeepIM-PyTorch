@@ -37,7 +37,7 @@ from render_swisscube import Renderer
 import json
 
 
-classes = ['__background__', 'swisscube']
+classes = ['swisscube']
 
 def parse_args():
     """
@@ -236,6 +236,10 @@ if __name__ == '__main__':
     # prepare network
     network = load_network()
     
+    with open('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal/data.json', 'r') as f:
+        pose_dict = json.load(f)
+
+
     for obj in classes:
         images_color, images_depth, index_images = load_images()
 
@@ -257,20 +261,21 @@ if __name__ == '__main__':
             im = pad_im(img_raw, 16)
                 
             # read initial pose estimation
-            name = os.path.basename(images_color[i])
+            name = os.path.join(*images_color[i].split('/')[-2:])
+             
+            pose = pose_dict[name]
+            translation, rotation_q = pose['t'], pose['r']
 
-            pose = os.path.join('/cvlabdata2/home/protopap/deepim/data/images/1b/posecnn_results', os.path.basename(images_color[i]) + '.mat')
-            pose = loadmat(pose)['pose']
-            translation, rotation_q = pose[:3], pose[3:]
-
-            poses = np.concatenate((rotation_q, translation))
 
             # construct pose input to the network
             poses_input = np.zeros((1, 9), dtype=np.float32)
             # class id in DeepIM starts with 0
             poses_input[0, 1] = 0
-            poses_input[0:, 2:] = poses
-
+            #poses_input[0:, 2:6] = -1 * R.from_quat(rotation_q).inv().as_quat()
+            poses_input[0, 2:6] = rotation_q
+            poses_input[0, 6:] = np.array(translation)
+            
+            
             # run network 
             im_pose_color, pose_result = test_image(network, dataset, im, im, poses_input, test_data)
 
