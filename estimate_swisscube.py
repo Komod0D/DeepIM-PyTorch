@@ -170,7 +170,8 @@ def load_network():
     network.eval()
     return network
 
-def load_images(obj):
+
+def load_images():
     # list images
     images_color = []
     filename = os.path.join(args.imgdir, args.color_name)
@@ -236,7 +237,7 @@ if __name__ == '__main__':
     network = load_network()
     
     for obj in classes:
-        images_color, images_depth, index_images = load_images(obj)
+        images_color, images_depth, index_images = load_images()
 
         # prepare renderer
         print('loading 3D models')
@@ -248,12 +249,12 @@ if __name__ == '__main__':
         # for each image
         for i in index_images:
 
-            im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-
-            # rescale image if necessary
-            if cfg.TEST.SCALES_BASE[0] != 1:
-                im_scale = cfg.TEST.SCALES_BASE[0]
-                im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
+            img_raw = cv2.imread(images_color[i], cv2.IMREAD_COLOR)
+            middle_x, middle_y = img_raw.shape[1] / 2, img_raw.shape[0] / 2
+            hheight, hwidth = 240, 320
+            # Crop out the middle of image
+            img_raw = img_raw[int(middle_y) - hheight: int(middle_y) + hheight, int(middle_x) - hwidth: int(middle_x) + hwidth]
+            im = pad_im(img_raw, 16)
                 
             # read initial pose estimation
             name = os.path.basename(images_color[i])
