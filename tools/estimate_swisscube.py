@@ -19,17 +19,24 @@ import os.path as osp
 import numpy as np
 import cv2
 import scipy.io
+from scipy.spatial.transform import Rotation as R
 import glob
 
-import _init_paths
+import tools._init_paths
 from fcn.train_test import test_image
 from fcn.config import cfg, cfg_from_file, yaml_from_file, get_output_dir
 from datasets.factory import get_dataset
 import networks
-from ycb_renderer import YCBRenderer
+
+
 from utils.blob import pad_im
 
-posecnn_classes = ('__background__', 'swisscube')
+sys.path.append('../../deepim')
+from render_swisscube import Renderer
+import json
+
+
+classes = ['__background__', 'swisscube']
 
 def parse_args():
     """
@@ -47,10 +54,10 @@ def parse_args():
                         help='optional metadata file', default=None, type=str)
     parser.add_argument('--color', dest='color_name',
                         help='color image pattern',
-                        default='*.bmp', type=str)
+                        default='*.png', type=str)
     parser.add_argument('--imgdir', dest='imgdir',
                         help='path of the directory with the test images',
-                        default='data/images/swisscube/1b', type=str)
+                        default='data/images/linemod', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
@@ -79,7 +86,7 @@ def parse_args():
                         help='optional metadata file', default=None, type=str)
     parser.add_argument('--dataset', dest='dataset_name',
                         help='dataset to train on',
-                        default='swisscube_test', type=str)
+                        default='linemod_test', type=str)
     parser.add_argument('--depth', dest='depth_name',
                         help='depth image pattern',
                         default='*depth.png', type=str)
@@ -88,7 +95,7 @@ def parse_args():
                         default='*.bmp', type=str)
     parser.add_argument('--imgdir', dest='imgdir',
                         help='path of the directory with the test images',
-                        default='data/images/swisscube/1b', type=str)
+                        default='data/images/1b/', type=str)
     parser.add_argument('--rand', dest='randomize',
                         help='randomize (do not use a fixed seed)',
                         action='store_true')
@@ -107,124 +114,9 @@ def parse_args():
     return args
 
 
-if __name__ == '__main__':
-    intrinsic = np.array(
-    [[4000, 0, 0],
-     [0, 4000, 0],
-     [1024, 1024, 1]]).T
 
-    args = parse_args()
+def init_tensors():
 
-    print('Called with args:')
-    print(args)
-
-    if args.cfg_file is not None:
-        cfg_from_file(args.cfg_file)
-
-    if len(cfg.TEST.CLASSES) == 0:
-        cfg.TEST.CLASSES = cfg.TRAIN.CLASSES
-
-    if args.meta_file is not None:
-        meta = yaml_from_file(args.meta_file)
-        # overwrite test classes
-        print(meta)
-        if 'ycb_ids' in meta:
-            cfg.TEST.CLASSES = [0]
-            for i in meta.ycb_ids:
-                cfg.TEST.CLASSES.append(i)
-            print('TEST CLASSES:', cfg.TEST.CLASSES)
-        if 'INTRINSICS' in meta:
-            cfg.INTRINSICS = meta['INTRINSICS']
-
-    print('Using config:')
-    pprint.pprint(cfg)
-
-    if not args.randomize:
-        # fix the random seeds (numpy and caffe) for reproducibility
-        np.random.seed(cfg.RNG_SEED)
-
-    # device
-    cfg.gpu_id = args.gpu_id
-    cfg.device = torch.device('cuda:{:d}'.format(cfg.gpu_id))
-    cfg.instance_id = 0
-    print('GPU device {:d}'.format(args.gpu_id))
-
-    # dataset
-    cfg.MODE = 'TEST'
-    cfg.TEST.SYNTHESIZE = False
-    dataset = get_dataset(args.dataset_name)
-
-    # overwrite intrinsics
-    if len(cfg.INTRINSICS) > 0:
-        K = np.array(cfg.INTRINSICS).reshape(3, 3)
-        if cfg.TEST.SCALES_BASE[0] != 1:
-            scale = cfg.TEST.SCALES_BASE[0]
-            K[0, 0] *= scale
-            K[0, 2] *= scale
-            K[1, 1] *= scale
-            K[1, 2] *= scale
-        dataset._intrinsic_matrix = K
-        print(f"Intrinsic matrix: \n{dataset._intrinsic_matrix}")
-
-    
-    # list images
-    images_color = []
-    filename = os.path.join(args.imgdir, args.color_name)
-    files = glob.glob(filename)
-    for i in range(len(files)):
-        filename = files[i]
-        images_color.append(filename)
-    images_color.sort()
-
-    images_depth = []
-    filename = os.path.join(args.imgdir, args.depth_name)
-    files = glob.glob(filename)
-    for i in range(len(files)):
-        filename = files[i]
-        images_depth.append(filename)
-    images_depth.sort()
-
-    # check if posecnn results are available
-    resdir_posecnn = os.path.join(args.imgdir, 'posecnn_results')
-    if not os.path.exists(resdir_posecnn):
-        print('Cannot find posecnn results in %s' % (resdir_posecnn))
-        sys.exit(1)
-
-    resdir = os.path.join(args.imgdir, 'deepim_results_' + cfg.INPUT)
-    if not os.path.exists(resdir):
-        os.makedirs(resdir)
-
-    if cfg.TEST.VISUALIZE:
-        index_images = np.random.permutation(len(images_color))
-    else:
-        index_images = range(len(images_color))
-
-    # prepare network
-    if args.pretrained:
-        network_data = torch.load(args.pretrained)
-        print("=> using pre-trained network '{}'".format(args.pretrained))
-    else:
-        network_data = None
-        print("no pretrained network specified")
-        sys.exit()
-
-    network = networks.__dict__[args.network_name](dataset.num_classes, network_data).cuda(device=cfg.device)
-    network = torch.nn.DataParallel(network, device_ids=[0]).cuda(device=cfg.device)
-    cudnn.benchmark = True
-    network.eval()
-
-    # prepare renderer
-    print('loading 3D models')
-    cfg.renderer = YCBRenderer(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT, render_marker=False, gpu_id=args.gpu_id)
-    if cfg.TEST.SYNTHESIZE:
-        cfg.renderer.load_objects(dataset.model_mesh_paths, dataset.model_texture_paths, dataset.model_colors)
-        print(dataset.model_mesh_paths)
-    else:
-        cfg.renderer.load_objects(dataset.model_mesh_paths_target, dataset.model_texture_paths_target, dataset.model_colors_target)
-        print(dataset.model_mesh_paths_target)
-    cfg.renderer.set_camera_default()
-
-    # initialize tensors for testing
     num = dataset.num_classes
     height = cfg.TRAIN.SYN_HEIGHT
     width = cfg.TRAIN.SYN_WIDTH
@@ -257,57 +149,164 @@ if __name__ == '__main__':
                  'pcloud_tgt_cuda': pcloud_tgt_cuda,
                  'pcloud_src_cuda': pcloud_src_cuda,
                  'flow_map_cuda': flow_map_cuda}
-
-    # for each image
-    for i in index_images:
-        im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
-        middle_y = im.shape[0] / 2
-        middle_x = im.shape[1] / 2
-        x0, x1 = int(middle_x - width / 2), int(middle_x + width / 2)
-        y0, y1 = int(middle_y - height / 2), int(middle_y + height / 2)
+    return test_data
 
 
-        im = im[y0:y1,x0:x1]
-        assert im.shape[0] == height and im.shape[1] == width
-        print(images_color[i])
-        if len(images_depth) > 0 and osp.exists(images_depth[i]):
-            depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
-            depth = depth.astype('float') / 1000.0
-            print(images_depth[i])
-        else:
-            depth = None
-            print('no depth image')
 
-        # rescale image if necessary
-        if cfg.TEST.SCALES_BASE[0] != 1:
-            im_scale = cfg.TEST.SCALES_BASE[0]
-            im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
-            if depth is not None:
-                depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
+def load_network():
 
-        # read initial pose estimation
-        name = os.path.basename(images_color[i])
-        result_file = os.path.join(resdir_posecnn, name + '.mat')
-        result = scipy.io.loadmat(result_file)
-        rois = result['rois']
-        poses = result['pose']
-        print(result_file)
+    if args.pretrained:
+        network_data = torch.load(args.pretrained)
+        print("=> using pre-trained network '{}'".format(args.pretrained))
+    else:
+        network_data = None
+        print("no pretrained network specified")
+        sys.exit()
 
-        # construct pose input to the network
-        num = rois.shape[0]
-        poses_input = np.zeros((num, 9), dtype=np.float32)
-        # class id in DeepIM starts with 0
-        poses_input[:, 1] = rois[:, 1] - 1
-        poses_input[:, 2:] = poses
+    network = networks.__dict__[args.network_name](dataset.num_classes, network_data).cuda(device=cfg.device)
+    network = torch.nn.DataParallel(network, device_ids=[0]).cuda(device=cfg.device)
+    cudnn.benchmark = True
+    network.eval()
+    return network
 
-        # run network
-        im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
+def load_images(obj):
+    # list images
+    images_color = []
+    filename = os.path.join(args.imgdir % int(obj), args.color_name)
 
-        # save result
-        if not cfg.TEST.VISUALIZE:
-            head, tail = os.path.split(images_color[i])
-            filename = os.path.join(resdir, tail + '.mat')
-            scipy.io.savemat(filename, pose_result, do_compression=True)
-            # rendered image
-            filename = os.path.join(resdir, tail + '_render.jpg')
-            cv2.imwrite(filename, im_pose_color[:, :, (2, 1, 0)])
+    print(f'getting images from {filename}')
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_color.append(filename)
+    images_color.sort()
+
+    images_depth = []
+    filename = os.path.join(args.imgdir, args.depth_name)
+    files = glob.glob(filename)
+    for i in range(len(files)):
+        filename = files[i]
+        images_depth.append(filename)
+    images_depth.sort()
+
+    resdir = os.path.join(args.imgdir, 'deepim_results_' + cfg.INPUT)
+    if not os.path.exists(resdir):
+        os.makedirs(resdir)
+
+    if cfg.TEST.VISUALIZE:
+        index_images = np.random.permutation(len(images_color))
+    else:
+        index_images = range(len(images_color))
+
+    return images_color, images_depth, index_images
+
+if __name__ == '__main__':
+    
+    intrinsic = np.array([[4000, 0, 1024],
+                        [0, 4000, 1024],
+                        [0, 0, 1]])
+    args = parse_args()
+
+    print('Called with args:')
+    print(args)
+
+    if args.cfg_file is not None:
+        cfg_from_file(args.cfg_file)
+
+    print('Using config:')
+    pprint.pprint(cfg)
+
+    if not args.randomize:
+        # fix the random seeds (numpy and caffe) for reproducibility
+        np.random.seed(cfg.RNG_SEED)
+
+    # device
+    cfg.gpu_id = args.gpu_id
+    cfg.device = torch.device('cuda:{:d}'.format(cfg.gpu_id))
+    cfg.instance_id = 0
+    print('GPU device {:d}'.format(args.gpu_id))
+
+    # dataset
+    cfg.MODE = 'TEST'
+    cfg.TEST.SYNTHESIZE = False
+    dataset = get_dataset(args.dataset_name)
+    
+    # prepare network
+    network = load_network()
+    
+    for obj in classes:
+        images_color, images_depth, index_images = load_images(obj)
+
+        # prepare renderer
+        print('loading 3D models')
+        cfg.renderer = RendererAdapter(width=cfg.TRAIN.SYN_WIDTH, height=cfg.TRAIN.SYN_HEIGHT)
+        cfg.renderer.load_object(int(obj))
+
+
+        # initialize tensors for testing
+        test_data = init_tensors()
+
+        
+        print(f'fetching poses from {result_file}')        
+        with open(result_file, 'r') as f:
+            results = json.load(f)
+        
+        # for each image
+        for i in index_images:
+            im = pad_im(cv2.imread(images_color[i], cv2.IMREAD_COLOR), 16)
+            print(images_color[i])
+            if len(images_depth) > 0 and osp.exists(images_depth[i]):
+                depth = pad_im(cv2.imread(images_depth[i], cv2.IMREAD_UNCHANGED), 16)
+                depth = depth.astype('float') / 1000.0
+                print(images_depth[i])
+            else:
+                depth = None
+                print('no depth image')
+
+            # rescale image if necessary
+            if cfg.TEST.SCALES_BASE[0] != 1:
+                im_scale = cfg.TEST.SCALES_BASE[0]
+                im = pad_im(cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR), 16)
+                if depth is not None:
+                    depth = pad_im(cv2.resize(depth, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST), 16)
+
+            # read initial pose estimation
+            name = os.path.basename(images_color[i])
+
+
+            num = int(name[:-4])
+            poses = results[str(num)][0]
+
+            rotation = np.array(poses['cam_R_m2c']).reshape((3,3))
+            dr = R.from_euler('xyz', np.random.random(size=(3,)) * 0.1 - 0.05).as_matrix()
+            print(f'disturbing rotation by {dr}')
+            rotation = dr @ rotation
+            
+            translation = np.array(poses['cam_t_m2c'])
+            t_dev = np.abs(translation) / 20
+            dt = np.random.random(size=(3,)) * t_dev
+            translation += dt
+            print(f'disturbing translation by {dt}')
+            
+
+            rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
+
+            poses = np.concatenate((rotation_q, translation))
+
+            # construct pose input to the network
+            poses_input = np.zeros((1, 9), dtype=np.float32)
+            # class id in DeepIM starts with 0
+            poses_input[0, 1] = int(obj) - 1
+            poses_input[0:, 2:] = poses
+
+            # run network 
+            im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
+
+            # save result
+            if not cfg.TEST.VISUALIZE:
+                head, tail = os.path.split(images_color[i])
+                filename = os.path.join(resdir, tail + '.mat')
+                scipy.io.savemat(filename, pose_result, do_compression=True)
+                # rendered image
+                filename = os.path.join(resdir, tail + '_render.jpg')
+                cv2.imwrite(filename, im_pose_color[:, :, (2, 1, 0)])
