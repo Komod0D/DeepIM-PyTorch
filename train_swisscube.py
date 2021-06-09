@@ -23,7 +23,7 @@ from fcn.train_test import test_image
 from fcn.config import cfg, cfg_from_file, yaml_from_file, get_output_dir
 from datasets.factory import get_dataset
 import networks
-from networks import FlowNetS
+from networks.FlowNetS import FlowNetS
 
 from render_swisscube import Renderer
 from fcn.train_test import process_sample, _compute_pose_target
@@ -192,7 +192,7 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt):
 def load_network(network_path):
 
     weights = torch.load(network_path)
-    network = FlowNetS(1).cuda(device=CUDA_DEVICE)
+    network = FlowNetS(1, batchNorm=False).cuda(device=CUDA_DEVICE)
     network.load_state_dict(weights['state_dict'])
     network = torch.nn.DataParallel(network, device_ids=[CUDA_DEVICE]).cuda(device=CUDA_DEVICE)
     cudnn.benchmark = True
@@ -399,7 +399,7 @@ if __name__ == '__main__':
     param_groups = network.params() # TODO fix
     optimizer = torch.optim.SGD(param_groups, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
 
-
+    generate_samples()
 
     epochs = 25
     cfg.epochs = epochs
