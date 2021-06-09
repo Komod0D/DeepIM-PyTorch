@@ -140,7 +140,7 @@ class Renderer:
         pose = np.array(pose)
         if pose.shape[0] == 9:
             pose = pose[2:]
-        translation, rotation_quat = pose[:3], pose[3:]
+        translation, rotation_quat = pose[4:], pose[:4]
         translation = np.array(translation)
         if not self.synthetic:
             rotation = quaternion2rotation(rotation_quat)
