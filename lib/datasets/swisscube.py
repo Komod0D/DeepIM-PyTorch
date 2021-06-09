@@ -37,18 +37,15 @@ class SwissCubeDataset(data.Dataset, datasets.imdb):
         self._classes_all = ['swisscube']
         self._num_classes_all = len(self._classes_all)
         # TODO: INVESTIGATE
-        self._class_colors_all = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255), \
-                              (0, 0, 128), (0, 128, 0), (128, 0, 0), (128, 128, 0), (128, 0, 128), (0, 128, 128), \
-                              (0, 64, 0), (64, 0, 0), (0, 0, 64), (64, 64, 0), (64, 0, 64), (0, 64, 64), 
-                              (192, 0, 0), (0, 192, 0), (0, 0, 192), (192, 192, 0), (192, 0, 192), (0, 192, 192),(32, 0, 0)]
-        self._symmetry_all = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0])
+        self._class_colors_all = [(255, 0, 0)]
+        self._symmetry_all = np.array([0])
         self._extents_all = self._load_object_extents()
 
         self._intrinsic_matrix = np.array([[4000, 0, 1024],
                                           [0, 4000, 1024],
                                           [0, 0, 1]])
-        self._width = 2048
-        self._height = 2048
+        self._width = 640
+        self._height = 480
 
         # select a subset of classes
         self._classes = ['swisscube']

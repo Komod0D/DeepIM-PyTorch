@@ -109,7 +109,6 @@ class Renderer:
         else:
             fx, fy, cx, cy = 4000, 4000, 1024, 1024
 
-
         self.intrinsic = np.array([fx, 0, cx, 0, fy, cy, 0, 0, 1]).reshape((3, 3))
         cam = pyrender.IntrinsicsCamera(fx, fy, cx, cy, zfar=2000)
         cam_rot = R.from_euler('y', 180, degrees=True).as_matrix()
@@ -138,6 +137,8 @@ class Renderer:
         self.set_pose(poses[0])
 
     def set_pose(self, pose):
+        if pose.shape[0] == 9:
+            pose = pose[2:]
         translation, rotation_quat = pose[:3], pose[3:]
         translation = np.array(translation)
         if not self.synthetic:
@@ -172,7 +173,7 @@ class Renderer:
         seg_t = torch.from_numpy(temp)
         seg_tensor.copy_(seg_t.flip(0))
 
-        if (pc2_tensor is not None):
+        if pc2_tensor is not None:
             pc2_tensor.copy_(image_tensor)
 
 
