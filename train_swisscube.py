@@ -325,6 +325,7 @@ def generate_samples(split='testing'):
             affine_matrices, zoom = process(poses_src.cpu().numpy(), poses_tgt.cpu().numpy(), images[:, :3], img_tgt, flows)
             yield images, flows, poses_src, poses_tgt, affine_matrices, zoom
 
+
 def train(gen_samples, network, optimizer, epoch):
     
     global weights_rot, extents, points
@@ -345,7 +346,9 @@ def train(gen_samples, network, optimizer, epoch):
             flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
         
         output, loss_pose_tensor, quaternion_delta_var, translation_var = \
-            network(input_zoom, tweights_rot, poses_src, poses_tgt, textents, tpoints, zoom)
+            network(input_zoom.float(), tweights_rot.float(),
+                    poses_src.float(), poses_tgt.float(),
+                    textents.float(), tpoints.float(), zoom.float())
 
 
         quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
