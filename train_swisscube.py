@@ -37,9 +37,9 @@ weights_rot = np.array([[1, 1, 1, 1]], dtype=np.float32)
 extents = np.zeros((1, 3), dtype=np.float32)
 extents[0] = 2 * np.max(np.absolute(points), axis=0)
 
-tweights_rot = torch.from_numpy(weights_rot).cuda()
-textents = torch.from_numpy(extents[np.newaxis, :]).cuda()
-tpoints = torch.from_numpy(points[np.newaxis, np.newaxis, :]).cuda()
+tweights_rot = torch.from_numpy(weights_rot).cuda().detach()
+textents = torch.from_numpy(extents[np.newaxis, :]).cuda().detach()
+tpoints = torch.from_numpy(points[np.newaxis, np.newaxis, :]).cuda().detach()
 print(textents.shape)
 print(tpoints.shape)
 
@@ -135,6 +135,13 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt, flows):
     x3d[2, :] = points[:, 2]
 
     for j in range(num):
+
+        cfg.renderer.set_pose(poses_src[j])
+        cfg.renderer.render(seg_src[j])
+
+        cfg.renderer.set_pose(poses_tgt[j])
+        cfg.renderer.render(seg_tgt[j])
+
         RT_tgt = np.zeros((3, 4), dtype=np.float32)
         RT_src = np.zeros((3, 4), dtype=np.float32)
 
@@ -180,7 +187,7 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt, flows):
         zoom_factor[j, 3] = affine_matrix[1, 2]
 
         pose = torch.tensor(se3_mul(RT_tgt, se3_inverse(RT_src))).cuda().float()
-        fun_compute_flow(seg_tgt, seg_src, flows[j], pose)
+        fun_compute_flow(seg_tgt[j], seg_src[j], flows[j], pose)
 
     return affine_matrices, zoom_factor
 
@@ -192,47 +199,9 @@ def load_network(network_path):
     network.load_state_dict(weights['state_dict'])
     network = torch.nn.DataParallel(network, device_ids=[CUDA_DEVICE]).cuda(device=CUDA_DEVICE)
     cudnn.benchmark = True
+    network.train()
 
     return network
-
-
-def init_tensors():
-
-
-    num = MINIBATCH_SIZE
-    height, width = 480, 640
-    input_blob_color = torch.cuda.FloatTensor(num, 6, height, width).detach()
-    image_real_blob_color = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    image_tgt_blob_color = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    image_src_blob_color = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    input_blob_depth = torch.cuda.FloatTensor(num, 6, height, width).detach()
-    image_real_blob_depth = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    image_tgt_blob_depth = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    image_src_blob_depth = torch.cuda.FloatTensor(num, 3, height, width).detach()
-    affine_matrices = torch.cuda.FloatTensor(num, 2, 3).detach()
-    zoom_factor = torch.cuda.FloatTensor(num, 4).detach()
-    flow_blob = torch.cuda.FloatTensor(num, 2, height, width).detach()
-    pcloud_tgt_cuda = torch.cuda.FloatTensor(height, width, 3).detach()
-    pcloud_src_cuda = torch.cuda.FloatTensor(height, width, 3).detach()
-    flow_map_cuda = torch.cuda.FloatTensor(height, width, 2).detach()
-
-    train_data = {'input_blob_color': input_blob_color,
-                  'image_real_blob_color': image_real_blob_color,
-                  'image_tgt_blob_color': image_tgt_blob_color,
-                  'image_src_blob_color': image_src_blob_color,
-                  'input_blob_depth': input_blob_depth,
-                  'image_real_blob_depth': image_real_blob_depth,
-                  'image_tgt_blob_depth': image_tgt_blob_depth,
-                  'image_src_blob_depth': image_src_blob_depth,
-                  'affine_matrices': affine_matrices,
-                  'zoom_factor': zoom_factor,
-                  'flow_blob': flow_blob,
-                  'pcloud_tgt_cuda': pcloud_tgt_cuda,
-                  'pcloud_src_cuda': pcloud_src_cuda,
-                  'flow_map_cuda': flow_map_cuda}
-
-
-    return train_data
 
 
 def load_poses(path):
@@ -256,7 +225,7 @@ def extract_pose(pose_dict):
 
     pose_deepim = np.zeros((1, 9))
     pose_deepim[0, 2:] = pose_src
-    pose_src = pose_deepim.copy()# TODO: CHECK!!!!!!!!!!!!!!
+    pose_src = pose_deepim.copy()
     return pose_tgt, pose_src
 
 
@@ -286,9 +255,9 @@ def generate_samples(split='testing'):
 
     images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda()
     flows = torch.FloatTensor(MINIBATCH_SIZE, 2, height, width).cuda()
-    img_tgt = torch.FloatTensor(3, height, width).cuda()
-    poses_src = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
-    poses_tgt = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
+    imgs_tgt = torch.FloatTensor(MINIBATCH_SIZE, 3, height, width).cuda()
+    poses_src = np.zeros((MINIBATCH_SIZE, 9), dtype=np.float32)
+    poses_tgt = np.zeros((MINIBATCH_SIZE, 9), dtype=np.float32)
     idx = 0
     for img_path in images_list:
         full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path.strip())
@@ -302,8 +271,8 @@ def generate_samples(split='testing'):
         
         pose = poses[num][0]
         pose_tgt, pose_src = extract_pose(pose)
-        poses_tgt[idx] = torch.from_numpy(pose_tgt).cuda()
-        poses_src[idx] = torch.from_numpy(pose_src).cuda()
+        poses_tgt[idx] = pose_tgt
+        poses_src[idx] = pose_src
 
         img = cv2.imread(full_path)
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
@@ -313,18 +282,11 @@ def generate_samples(split='testing'):
         img = np.transpose(img, (2, 0, 1))[np.newaxis, :] / 255  # N, C, H, W = (1, 3, 480, 640)
         images[idx, :3] = torch.from_numpy(img)
 
-        cfg.renderer.set_pose(pose_src[0])
-        cfg.renderer.render(images[idx, 3:])
-
-        cfg.renderer.set_pose(pose_tgt[0])
-        cfg.renderer.render(img_tgt)
-
-        
         idx += 1
         if idx == MINIBATCH_SIZE:
             idx = 0
 
-            affine_matrices, zoom = process(poses_src.cpu().numpy(), poses_tgt.cpu().numpy(), images[:, :3], img_tgt, flows)
+            affine_matrices, zoom = process(poses_src, poses_tgt, images[:, 3:], imgs_tgt, flows)
             yield images, flows, poses_src, poses_tgt, affine_matrices, zoom
 
 
@@ -334,46 +296,53 @@ def train(gen_samples, network, optimizer, epoch):
     total_batches = 30356 // MINIBATCH_SIZE
     total_pose, total_flow = 0.0, 0.0
     start = time.time()
+    n_iter = 4
+    renders = torch.FloatTensor(MINIBATCH_SIZE, 3, height, width)
     for curr_batch, sample in enumerate(gen_samples):
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
-    
-        # zoom in image
-        grids = nn.functional.affine_grid(affine_matrices, images.size())
-        input_zoom = nn.functional.grid_sample(images, grids).detach()
 
-        # zoom in flow
-        flow_zoom = nn.functional.grid_sample(flows, grids)
-        for k in range(flow_zoom.shape[0]):
-            flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
-            flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
-        
-        output, loss_pose_tensor, quaternion_delta_var, translation_var = \
-            network(input_zoom.float(), tweights_rot.float(),
-                    poses_src.float(), poses_tgt.float(),
-                    textents.float(), tpoints.float(), zoom.float())
+        for it in range(n_iter):
+            # zoom in image
+            grids = nn.functional.affine_grid(affine_matrices, images.size())
+            input_zoom = nn.functional.grid_sample(images, grids).detach()
+
+            # zoom in flow
+            flow_zoom = nn.functional.grid_sample(flows, grids)
+            for k in range(flow_zoom.shape[0]):
+                flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
+                flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
+
+            output, loss_pose_tensor, quaternion_delta_var, translation_var = \
+                network(input_zoom.float(), tweights_rot.float(),
+                        poses_src.float(), poses_tgt.float(),
+                        textents.float(), tpoints.float(), zoom.float())
 
 
-        quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
-        translation = translation_var.cpu().detach().numpy()
-        poses_est, error_rot, error_trans = \
-                _compute_pose_target(quaternion_delta, translation, poses_src.cpu().numpy(), poses_tgt.cpu().numpy())
+            quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
+            translation = translation_var.cpu().detach().numpy()
+            poses_est, error_rot, error_trans = \
+                    _compute_pose_target(quaternion_delta, translation, poses_src, poses_tgt)
 
-        # losses
-        loss_pose = torch.mean(loss_pose_tensor)
-        loss_flow = 0.1 * multiscaleEPE(output, flow_zoom)
-        loss = loss_pose + loss_flow
+            # losses
+            loss_pose = torch.mean(loss_pose_tensor)
+            loss_flow = 0.1 * multiscaleEPE(output, flow_zoom)
+            loss = loss_pose + loss_flow
 
-        # compute gradient and do optimization step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        end = time.time() - start
-        start = time.time()
-        total_pose += loss_pose.item()
-        total_flow += loss_flow.item()
+            # compute gradient and do optimization step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
-              % (curr_batch + 1, total_batches, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
+            end = time.time() - start
+            start = time.time()
+            total_pose += loss_pose.item()
+            total_flow += loss_flow.item()
+
+            print('batch: [%d/%d], iter %d, epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
+                  % (curr_batch + 1, total_batches, it + 1, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
+
+            affine_matrices, zoom = process(poses_est, poses_tgt, images[:, 3:], renders, flows)
+
     return total_pose / total_batches, total_flow / total_batches
                 
                 
