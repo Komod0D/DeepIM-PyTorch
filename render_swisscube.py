@@ -19,6 +19,38 @@ def to_homo(rotation, translation):
     return transform
 
 
+def get_corners(mesh, intrinsic, rotation, translation):
+    box = mesh.bounding_box.to_mesh()
+    vertices = np.array(box.vertices)
+    proj = intrinsic @ (rotation @ vertices.T + translation[:, np.newaxis])
+    proj[0] = proj[0] / proj[2]
+    proj[1] = proj[1] / proj[2]
+
+    return proj[:2].T
+
+
+def add_pose_contour(mesh, intrinsic, rotation, translation, color, image, img_scaling=4, thickness=1):
+    image = np.copy(image)
+    height, width, _ = image.shape
+    vs = get_corners(mesh, intrinsic, rotation, translation) / img_scaling
+    ps = [(int(vs[i, 0]), int(vs[i, 1])) for i in range(vs.shape[0])]
+
+    # z direction
+    for i in range(4):
+        cv2.line(image, ps[2 * i], ps[2 * i + 1], color, thickness=thickness)
+
+    # y direction
+    for j in range(2):
+        for i in range(2):
+            cv2.line(image, ps[i + 4 * j], ps[i + 2 + 4 * j], color, thickness=thickness)
+
+    # x direction
+    for i in range(4):
+            cv2.line(image, ps[i], ps[i + 4], color, thickness=thickness)
+
+    return image
+
+
 def quaternion2rotation(quat):
         '''
         Do not use the quat2dcm() function in the SPEED utils.py, it is not rotation
@@ -64,6 +96,8 @@ class Renderer:
         scene = pyrender.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[0, 0, 0])
 
         light = pyrender.PointLight(color=[1.0, 1.0, 1.0], intensity=1000000.0)
+        
+        self.intrinsic = np.array([4000, 0, 1024, 0, 4000, 1024, 0, 0, 1]).reshape((3, 3))
         cam = pyrender.IntrinsicsCamera(4000, 4000, 1024, 1024, zfar=2000)
         cam_rot = R.from_euler('y', 180, degrees=True).as_matrix()
         cam_matrix = to_homo(cam_rot, np.zeros((3,)))
@@ -94,7 +128,8 @@ class Renderer:
         translation, rotation_quat = pose[:3], pose[3:]
         translation = np.array(translation)
 
-        rotation = R.from_quat(rotation_quat).as_matrix()
+        # rotation = R.from_quat(rotation_quat).as_matrix()
+        rotation = quaternion2rotation(rotation_quat)
         transform = to_homo(rotation, translation)
         self.scene.set_pose(self.nm, pose=transform)
 
@@ -128,6 +163,7 @@ class Renderer:
 
 def get_next(iteritems):
     
+    
     img, pose = next(iteritems)
     img = os.path.join(img.split('/')[0], 'Test', img.split('/')[1])
     img = cv2.imread(img)
@@ -135,15 +171,13 @@ def get_next(iteritems):
     img = img[80:560]
     rotation = pose['rotation_m2c']
     translation = pose['translation_m2c']
-    
-
     """
+
+    
     img_path = next(iteritems).strip()
     full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
     num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
     img = cv2.imread(full_path)
-    print(img)
-    print(full_path)
 
     seq_name = os.path.dirname(os.path.dirname(full_path))
     
@@ -173,25 +207,27 @@ if __name__ == '__main__':
         images = f.readlines()
 
     iteritems = iter(images)
-    img, translation, rotation = get_next(iteritems)
+    
     """
-
     os.chdir('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal')
     with open('data.json', 'r') as f:
         poses = json.load(f)
 
     iteritems = iter(poses.items())
     
+
     img, translation, rotation = get_next(iteritems)
+    translation = np.array(translation)
+    old_rotation = quaternion2rotation(rotation)
+    mesh = trimesh.load('/cvlabdata2/cvlab/datasets_protopap/SwissCubeReal/obj_000001.ply')
+    img = add_pose_contour(mesh, r.intrinsic, old_rotation, translation, (0, 255, 0), img, 2048 / 640)
     cv2.imshow('image', img)
     x, y, z = translation
-    dx, dy, dz = 0
 
     while True:
         a, b, c, d = rotation
         pose = [x, y, z, a, b, c, d]
         r.set_pose(pose)
-        print(R.from_quat(rotation).as_euler('xyz', degrees=True))
         color = r.render_()
 
         cv2.imshow('render', color)
@@ -199,10 +235,14 @@ if __name__ == '__main__':
         if key == 27:
             break
         elif key == 13:
-            img, translation, rotation = get_next(iteritems)
+            img, translation, old_rotation = get_next(iteritems)
+            rotation = old_rotation
             x, y, z = translation
             a, b, c, d = rotation
-
+           
+            old_rotation = quaternion2rotation(rotation)
+            translation = np.array(translation)
+            img = add_pose_contour(mesh, r.intrinsic, old_rotation, translation, (0, 255, 0), img, 2048 / 640)
             cv2.imshow('image', img)
         elif key == 119:
             y += 10
@@ -234,4 +274,6 @@ if __name__ == '__main__':
         elif key == 86:
             rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', -15, degrees=True).as_matrix()
             rotation = R.from_matrix(rotation).as_quat()
-
+        elif key == 112:
+            changes = R.from_quat(old_rotation).inv().as_matrix() @ R.from_quat(rotation).as_matrix()
+            print(R.from_matrix(changes).as_euler('xyz', degrees=True))

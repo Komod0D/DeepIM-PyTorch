@@ -254,17 +254,12 @@ if __name__ == '__main__':
         for i in index_images:
 
             img_raw = cv2.imread(images_color[i], cv2.IMREAD_COLOR)
-            middle_x, middle_y = img_raw.shape[1] / 2, img_raw.shape[0] / 2
-            hheight, hwidth = 240, 320
-            # Crop out the middle of image
-            img_raw = img_raw[int(middle_y) - hheight: int(middle_y) + hheight, int(middle_x) - hwidth: int(middle_x) + hwidth]
-            im = pad_im(img_raw, 16)
-                
+            im = cv2.resize(img_raw, (640, 640), cv2.INTER_AREA)[80:560] 
             # read initial pose estimation
             name = os.path.join(*images_color[i].split('/')[-2:])
              
             pose = pose_dict[name]
-            translation, rotation_q = pose['t'], pose['r']
+            translation, rotation_q = pose['translation_m2c'], pose['rotation_m2c']
 
 
             # construct pose input to the network
