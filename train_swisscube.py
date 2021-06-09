@@ -35,7 +35,7 @@ from utils.se3 import T_inv_transform, se3_mul, se3_inverse
 
 
 CUDA_DEVICE = 0
-MINIBATCH_SIZE = 64
+MINIBATCH_SIZE = 16
 
 width, height = 640, 480
 r = Renderer(synthetic=True)
