@@ -27,7 +27,7 @@ width, height = 640, 480
 r = Renderer(synthetic=True)
 intrinsic = r.intrinsic
 
-points = np.genfromtxt('data/models/swisscube/points_new.xyz')
+points = np.genfromtxt('data/models/swisscube/points_new.xyz').astype(np.float32)
 points = points @ R.from_euler('x', 90, degrees=True).as_matrix().T
 
 
