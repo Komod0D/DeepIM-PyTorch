@@ -297,7 +297,7 @@ def train(gen_samples, network, optimizer, epoch):
     total_pose, total_flow = 0.0, 0.0
     start = time.time()
     n_iter = 4
-    renders = torch.FloatTensor(MINIBATCH_SIZE, 3, height, width)
+    renders = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width)
     for curr_batch, sample in enumerate(gen_samples):
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
 
@@ -341,7 +341,8 @@ def train(gen_samples, network, optimizer, epoch):
             print('batch: [%d/%d], iter %d, epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
                   % (curr_batch + 1, total_batches, it + 1, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
 
-            affine_matrices, zoom = process(poses_est, poses_tgt, images[:, 3:], renders, flows)
+            affine_matrices, zoom = process(poses_est, poses_tgt, renders[:, :3], renders[:, 3:], flows)
+            images[:, 3:].copy_(renders[:, :3])
 
     return total_pose / total_batches, total_flow / total_batches
                 
