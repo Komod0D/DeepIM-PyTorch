@@ -45,19 +45,15 @@ points = np.genfromtxt('data/models/swisscube/points_new.xyz')
 points = points @ R.from_euler('x', 90, degrees=True).as_matrix().T
 
 
-weights_rot = np.array([1, 1, 1, 1])
+weights_rot = np.array([[1, 1, 1, 1]])
 extents = np.zeros((1, 3))
 extents[0] = 2 * np.max(np.absolute(points), axis=0)
 
-textents = extents[np.newaxis, :]
-tpoints = points[np.newaxis, np.newaxis, :]
+tweights_rot = torch.from_numpy(weights_rot).cuda()
+textents = torch.from_numpy(extents[np.newaxis, :]).cuda()
+tpoints = torch.from_numpy(points[np.newaxis, np.newaxis, :]).cuda()
 print(textents.shape)
 print(tpoints.shape)
-
-tweights_rot = torch.from_numpy(weights_rot).cuda()
-textents = torch.from_numpy(extents).cuda()
-tpoints = torch.from_numpy(points).cuda()
-
 
 threadsperblock = (32, 32, 1)
 blockspergrid_x = np.ceil(height / threadsperblock[0])
