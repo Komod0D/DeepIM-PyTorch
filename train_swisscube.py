@@ -253,9 +253,9 @@ def generate_samples(split='testing'):
     with open(images_list_path, 'r') as f:
         images_list = f.readlines()
 
-    images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda()
-    flows = torch.FloatTensor(MINIBATCH_SIZE, 2, height, width).cuda()
-    imgs_tgt = torch.FloatTensor(MINIBATCH_SIZE, 3, height, width).cuda()
+    images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda().detach()
+    flows = torch.FloatTensor(MINIBATCH_SIZE, 2, height, width).cuda().detach()
+    imgs_tgt = torch.FloatTensor(MINIBATCH_SIZE, 3, height, width).cuda().detach()
     poses_src = np.zeros((MINIBATCH_SIZE, 9), dtype=np.float32)
     poses_tgt = np.zeros((MINIBATCH_SIZE, 9), dtype=np.float32)
     idx = 0
@@ -314,7 +314,7 @@ def train(gen_samples, network, optimizer, epoch):
 
             output, loss_pose_tensor, quaternion_delta_var, translation_var = \
                 network(input_zoom.float(), tweights_rot.float(),
-                        poses_src.float(), poses_tgt.float(),
+                        torch.from_numpy(poses_src).cuda().detach(), torch.from_numpy(poses_tgt).cuda().detach(),
                         textents.float(), tpoints.float(), zoom.float())
 
 
