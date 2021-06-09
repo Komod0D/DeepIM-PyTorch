@@ -221,6 +221,9 @@ class FlowNetS(nn.Module):
     def bias_parameters(self):
         return [param for name, param in self.named_parameters() if 'bias' in name]
 
+    def fine_tune_parameters(self):
+        return [param for name, param in self.named_parameters() if name[:3] in ['fc6', 'fc7', 'fcr', 'fct']]
+
 
 class FlowNetS_RGBD(nn.Module):
     expansion = 1

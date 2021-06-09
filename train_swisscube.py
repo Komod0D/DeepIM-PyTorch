@@ -396,12 +396,12 @@ if __name__ == '__main__':
     network_path = 'data/checkpoints/from_deepim.pth'
     network = load_network(network_path)
 
-    param_groups = network.params() # TODO fix
-    optimizer = torch.optim.SGD(param_groups, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
+    fine_tune = network.fine_tune_parameters()  # TODO fix
+    optimizer = torch.optim.SGD(fine_tune, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
 
     generate_samples()
 
     epochs = 25
     cfg.epochs = epochs
     for i in range(epochs):
-        train(generate_samples('training'), network, optimizer, epoch)
+        train(generate_samples('training'), network, optimizer, i)
