@@ -1,38 +1,24 @@
-import cupy
-import torch
-import torch.nn.parallel
-import torch.nn as nn
-import torch.backends.cudnn as cudnn
-import torch.utils.data
-import os
 import json
-from scipy.spatial.transform import Rotation as R
+import os
+import sys
+import time
 
-import argparse
-import pprint
-import time, os, sys
-import os.path as osp
-import numpy as np
+import cupy
 import cv2
-import scipy.io
-from scipy.spatial.transform import Rotation as R
-import glob
-
-import tools._init_paths
-from fcn.train_test import test_image
-from fcn.config import cfg, cfg_from_file, yaml_from_file, get_output_dir
-from datasets.factory import get_dataset
-import networks
+import numpy as np
+import torch
+import torch.backends.cudnn as cudnn
+import torch.nn as nn
+import torch.nn.parallel
+import torch.utils.data
+from fcn.config import cfg, cfg_from_file
+from fcn.multiscaleloss import multiscaleEPE
+from fcn.train_test import _compute_pose_target
 from networks.FlowNetS import FlowNetS
+from scipy.spatial.transform import Rotation as R
+from utils.se3 import se3_mul, se3_inverse
 
 from render_swisscube import Renderer
-from fcn.train_test import process_sample, _compute_pose_target
-from fcn.multiscaleloss import multiscaleEPE, realEPE
-
-import trimesh
-from utils.se3 import T_inv_transform, se3_mul, se3_inverse
-
-
 
 CUDA_DEVICE = 0
 MINIBATCH_SIZE = 64
