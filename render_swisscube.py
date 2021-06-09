@@ -46,7 +46,7 @@ def add_pose_contour(mesh, intrinsic, rotation, translation, color, image, img_s
 
     # x direction
     for i in range(4):
-            cv2.line(image, ps[i], ps[i + 4], color, thickness=thickness)
+        cv2.line(image, ps[i], ps[i + 4], color, thickness=thickness)
 
     return image
 
@@ -234,8 +234,10 @@ if __name__ == '__main__':
     translation = np.array(translation)
     cv2.imshow('image', img)
     x, y, z = translation
-
+    dx, dy, dz = 0, 0, 0
     while True:
+        rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('xyz', [dx, dy, dz], degrees=True).as_matrix()
+        rotation = R.from_matrix(rotation).as_quat()
         a, b, c, d = rotation
         pose = [x, y, z, a, b, c, d]
         r.set_pose(pose)
@@ -264,23 +266,15 @@ if __name__ == '__main__':
         elif key == 113:
             z -= 10
         elif key == 81:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dy -= 15
         elif key == 83:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('y', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dy += 15
         elif key == 82:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dx -= 15
         elif key == 84:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('x', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dx += 15
         elif key == 85:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', 15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
+            dz += 15
         elif key == 86:
-            rotation = R.from_quat(rotation).as_matrix() @ R.from_euler('z', -15, degrees=True).as_matrix()
-            rotation = R.from_matrix(rotation).as_quat()
-        elif key == 112:
-            changes = R.from_quat(old_rotation).inv().as_matrix() @ R.from_quat(rotation).as_matrix()
-            print(R.from_matrix(changes).as_euler('xyz', degrees=True))
+            dz -= 15
+
