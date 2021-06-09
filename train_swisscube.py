@@ -306,6 +306,8 @@ def generate_samples(split='testing'):
         
         pose = poses[num][0]
         pose_tgt, pose_src = extract_pose(pose)
+        poses_tgt[idx] = pose_tgt
+        poses_src[idx] = pose_src
 
         img = cv2.imread(full_path)
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
@@ -315,29 +317,26 @@ def generate_samples(split='testing'):
         img = np.transpose(img, (2, 0, 1))[np.newaxis, :] / 255  # N, C, H, W = (1, 3, 480, 640)
         images[idx, :3] = torch.from_numpy(img)
 
-        print(pose_src, pose_tgt)
         cfg.renderer.set_pose(pose_src[0])
         cfg.renderer.render(images[idx, 3:])
 
         cfg.renderer.set_pose(pose_tgt[0])
         cfg.renderer.render(img_tgt)
 
-
-        poses_tgt.append(pose_tgt)
         flows.append()
 
         if idx == MINIBATCH_SIZE:
             idx = 0
 
-            affine_matrices, zoom = process(pose_src, pose_tgt, images[:, 3:], img_tgt, flows)
+            affine_matrices, zoom = process(pose_src, pose_tgt, images[:, :3], img_tgt, flows)
             yield images, flows, poses_src, poses_tgt, affine_matrices, zoom
 
 
 def train(gen_samples, network, optimizer, epoch):
     
     global weights_rot, extents, points
-    for sample in gen_samples:
-
+    total_batches = 30356 // MINIBATCH_SIZE
+    for curr_batch, sample in gen_samples:
         start = time.time()
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
         weights_rot = weights_rot
@@ -375,8 +374,11 @@ def train(gen_samples, network, optimizer, epoch):
 
         end = time.time() - start
 
-        print('epoch: [%d/%d], loss %.4f, l_pose %.4f (%.2f, %.2f), l_flow %.4f, lr %.6f, in time %f'
-              % (epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
+        error_rot = error_rot.mean(axis=0)
+        error_trans = error_trans.mean(axis=0)
+
+        print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (%.2f, %.2f), l_flow %.4f, lr %.6f, in time %f'
+              % (curr_batch + 1, total_batches, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
 
                 
                 
