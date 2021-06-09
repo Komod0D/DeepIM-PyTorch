@@ -43,9 +43,16 @@ intrinsic = r.intrinsic
 
 points = np.genfromtxt('data/models/swisscube/points_new.xyz')
 points = points @ R.from_euler('x', 90, degrees=True).as_matrix().T
+
+
 weights_rot = np.array([1, 1, 1, 1])
 extents = np.zeros((1, 3))
 extents[0] = 2 * np.max(np.absolute(points), axis=0)
+
+textents = extents[np.newaxis, :]
+tpoints = points[np.newaxis, np.newaxis, :]
+print(textents.shape)
+print(tpoints.shape)
 
 tweights_rot = torch.from_numpy(weights_rot).cuda()
 textents = torch.from_numpy(extents).cuda()
@@ -142,7 +149,7 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt, flows):
     x3d[0, :] = points[:, 0]
     x3d[1, :] = points[:, 1]
     x3d[2, :] = points[:, 2]
-    epoch
+
     for j in range(num):
         RT_tgt = np.zeros((3, 4), dtype=np.float32)
         RT_src = np.zeros((3, 4), dtype=np.float32)
