@@ -306,8 +306,8 @@ def generate_samples(split='testing'):
         
         pose = poses[num][0]
         pose_tgt, pose_src = extract_pose(pose)
-        poses_tgt[idx] = pose_tgt
-        poses_src[idx] = pose_src
+        poses_tgt[idx] = torch.from_numpy(pose_tgt).cuda()
+        poses_src[idx] = torch.from_numpy(pose_src).cuda()
 
         img = cv2.imread(full_path)
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
@@ -323,8 +323,6 @@ def generate_samples(split='testing'):
         cfg.renderer.set_pose(pose_tgt[0])
         cfg.renderer.render(img_tgt)
 
-        flows.append()
-
         if idx == MINIBATCH_SIZE:
             idx = 0
 
@@ -336,6 +334,7 @@ def train(gen_samples, network, optimizer, epoch):
     
     global weights_rot, extents, points
     total_batches = 30356 // MINIBATCH_SIZE
+    total_pose, total_flow = 0.0, 0.0
     for curr_batch, sample in gen_samples:
         start = time.time()
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
@@ -371,15 +370,16 @@ def train(gen_samples, network, optimizer, epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
         end = time.time() - start
 
+        total_pose += loss_pose.item()
+        total_flow += loss_flow.item()
         error_rot = error_rot.mean(axis=0)
         error_trans = error_trans.mean(axis=0)
 
         print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (%.2f, %.2f), l_flow %.4f, lr %.6f, in time %f'
               % (curr_batch + 1, total_batches, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
-
+    return total_pose / total_batches, total_flow / total_batches
                 
                 
 if __name__ == '__main__':
@@ -392,10 +392,19 @@ if __name__ == '__main__':
 
     fine_tune = network.module.fine_tune_parameters()  # TODO fix
     optimizer = torch.optim.SGD(fine_tune, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
+ 
 
-    generate_samples()
-
+    pose_losses, flow_losses = [], []
     epochs = 25
     cfg.epochs = epochs
     for epoch in range(epochs):
-        train(generate_samples('training'), network, optimizer, epoch)
+        lpose, lflow = train(generate_samples('training'), network, optimizer, epoch)
+
+        pose_losses.append(lpose)
+        flow_losses.append(lflow)
+        
+        state = {'epoch': epoch + 1, 'state_dict': network.module.state_dict()}
+        filename = 'data/checkpoints/ours_epoch_{:d}'.format(epoch+1) + '_checkpoint.pth')
+        torch.save(state, filename)
+
+    np.save('losses', np.hstack((np.array(pose_losses)[:, np.newaxis], np.array(flow_losses))[:, np.newaxis]))
