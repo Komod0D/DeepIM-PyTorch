@@ -31,8 +31,8 @@ points = np.genfromtxt('data/models/swisscube/points_new.xyz').astype(np.float32
 points = points @ R.from_euler('x', 90, degrees=True).as_matrix().T
 
 
-weights_rot = np.array([[1, 1, 1, 1]])
-extents = np.zeros((1, 3))
+weights_rot = np.array([[1, 1, 1, 1]], dtype=np.float32)
+extents = np.zeros((1, 3), dtype=np.float32)
 extents[0] = 2 * np.max(np.absolute(points), axis=0)
 
 tweights_rot = torch.from_numpy(weights_rot).cuda()
