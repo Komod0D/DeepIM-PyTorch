@@ -247,12 +247,21 @@ def load_poses(path):
 
 
 def extract_pose(pose_dict):
-    rotation = np.array(pose_dict['cam_R_m2c']).reshape((3, 3))
     translation = np.array(pose_dict['cam_t_m2c'])
+    rotation = np.array(pose_dict['cam_R_m2c']).reshape((3, 3))
+    rotation = R.from_matrix(rotation).as_quat()
 
-    quaternion = R.from_matrix(rotation).as_quat()
-    pose = np.concatenate((quaternion, translation))  # TODO: CHECK!!!!!!!!!!!!!!
-    return pose
+    pose_tgt = np.concatenate((rotation, translation))
+    pose_src = alter_pose(pose_tgt)
+
+    pose_deepim = np.zeros((1, 9))
+    pose_deepim[0, 2:] = pose_tgt
+    pose_tgt = pose_deepim.copy()
+
+    pose_deepim = np.zeros((1, 9))
+    pose_deepim[0, 2:] = pose_src
+    pose_src = pose_deepim.copy()# TODO: CHECK!!!!!!!!!!!!!!
+    return pose_tgt, pose_src
 
 
 def alter_pose(pose):
@@ -291,47 +300,19 @@ def generate_samples(split='testing'):
     poses_src = []
     flows = []
     for img_path in images_list:
-        full_path = os.path.join(base_path, img_path.strip())
-        pose_path = os.path.join(os.path.dirname(os.path.dirname(full_path)), 'scene_gt.json')
-        poses = load_poses(pose_path)
-        im_num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
-        pose_tgt = extract_pose(poses[im_num][0])  # TODO check again!!!!!!!
-        pose_src = alter_pose(pose_tgt)
-
-
-
-        
-        img_path = next(iteritems).strip()
         full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
         num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
-        img = cv2.imread(full_path)
-        img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
-        img = img[80:560]
+
         seq_name = os.path.dirname(os.path.dirname(full_path))
         
         poses_name = os.path.join(seq_name, 'scene_gt.json')
         with open(poses_name, 'r') as j:
             poses = json.load(j)
-
         
         pose = poses[num][0]
-        translation = np.array(pose['cam_t_m2c'])
-        rotation = np.array(pose['cam_R_m2c']).reshape((3, 3))
-        rotation = R.from_matrix(rotation).as_quat()
-
-
-
-
-        pose_deepim = np.zeros((1, 9))
-        pose_deepim[0, 2:] = pose_tgt
-        pose_tgt = pose_deepim.copy()
-
-        pose_deepim = np.zeros((1, 9))
-        pose_deepim[0, 2:] = pose_src
-        pose_src = pose_deepim.copy()
+        pose_tgt, pose_src = extract_pose(pose)
 
         img = cv2.imread(full_path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
         img = img[80:560]
 
@@ -347,6 +328,8 @@ def generate_samples(split='testing'):
 
         cv2.waitKey(0)
         continue
+
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         img = np.transpose(img, (2, 0, 1))[np.newaxis, :] / 255  # N, C, H, W = (1, 3, 480, 640)
         images.append(img)
