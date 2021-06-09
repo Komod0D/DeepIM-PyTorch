@@ -44,7 +44,8 @@ intrinsic = r.intrinsic
 points = np.genfromtxt('data/models/swisscube/points_new.xyz')
 points = points @ R.from_euler('x', 90, degrees=True).as_matrix().T
 weights_rot = np.array([1, 1, 1, 1])
-extents = np.array([])
+extents = np.zeros((1, 3))
+extents[0] = 2 * np.max(np.absolute(points), axis=0)
 
 threadsperblock = (32, 32, 1)
 blockspergrid_x = np.ceil(height / threadsperblock[0])
@@ -126,24 +127,23 @@ def fun_compute_flow(pcloud_tgt, pcloud_src, flow_cuda, pose):
     flow_cuda.copy_(flow_map_cuda.permute(2, 0, 1))
 
 
-def process(poses_src, poses_tgt, seg_src, seg_tgt):
+def process(poses_src, poses_tgt, seg_src, seg_tgt, flows):
 
     num = poses_src.shape[0]
     affine_matrices = torch.cuda.FloatTensor(num, 2, 3).detach()
     zoom_factor = torch.cuda.FloatTensor(num, 4).detach()
-    flows = torch.cuda.FloatTensor(num, width, height, 2).detach()
 
+    x3d = np.ones((4, points.shape[0]), dtype=np.float32)
+    x3d[0, :] = points[:, 0]
+    x3d[1, :] = points[:, 1]
+    x3d[2, :] = points[:, 2]
+    epoch
     for j in range(num):
         RT_tgt = np.zeros((3, 4), dtype=np.float32)
         RT_src = np.zeros((3, 4), dtype=np.float32)
 
-        x3d = np.ones((4, points.shape[0]), dtype=np.float32)
-        x3d[0, :] = points[:, 0]
-        x3d[1, :] = points[:, 1]
-        x3d[2, :] = points[:, 2]
         RT_tgt[:3, :3] = R.from_quat(poses_tgt[j, 2:6]).as_matrix()
         RT_tgt[:, 3] = poses_tgt[j, 6:]
-
 
         # compute box
         RT_src[:3, :3] = R.from_quat(poses_src[j, 2:6]).as_matrix()
@@ -184,9 +184,9 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt):
         zoom_factor[j, 3] = affine_matrix[1, 2]
 
         pose = torch.tensor(se3_mul(RT_tgt, se3_inverse(RT_src))).cuda().float()
-        fun_compute_flow(seg_tgt, seg_src, flows[i], pose)
+        fun_compute_flow(seg_tgt, seg_src, flows[j], pose)
 
-    return affine_matrices, zoom_factor, flows
+    return affine_matrices, zoom_factor
 
 
 def load_network(network_path):
@@ -282,23 +282,18 @@ def generate_samples(split='testing'):
         print(f'invalid split name {split}')
         exit(-1)
 
-    points = None
-    weights_rot = np.array([1, 1, 1, 1])
-    extents = None
-
-    width, height = 640, 480
-
     base_path = '/cvlabdata2/cvlab/datasets_protopap/swisscube/'
 
     images_list_path = os.path.join(base_path, f'{split}.txt')
     with open(images_list_path, 'r') as f:
         images_list = f.readlines()
 
-    images = []
-    renders = []
-    poses_tgt = []
-    poses_src = []
-    flows = []
+    images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda()
+    flows = torch.FloatTensor(MINIBATCH_SIZE, 4, height, width).cuda()
+    img_tgt = torch.FloatTensor(3, height, width).cuda()
+    poses_src = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
+    poses_tgt = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
+    idx = 0
     for img_path in images_list:
         full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path.strip())
         num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
@@ -316,37 +311,26 @@ def generate_samples(split='testing'):
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
         img = img[80:560]
 
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = np.transpose(img, (2, 0, 1))[np.newaxis, :] / 255  # N, C, H, W = (1, 3, 480, 640)
+        images[idx, :3] = torch.from_numpy(img)
+
         print(pose_src, pose_tgt)
         cfg.renderer.set_pose(pose_src[0])
-        render_src = cfg.renderer.render_()
+        cfg.renderer.render(images[idx, 3:])
 
         cfg.renderer.set_pose(pose_tgt[0])
-        render_tgt = cfg.renderer.render_()
+        cfg.renderer.render(img_tgt)
 
-        cv2.imshow('real', img)
-        cv2.imshow('src', render_src)
-        cv2.imshow('tgt', render_tgt)
 
-        cv2.waitKey(0)
-        continue
-
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-        img = np.transpose(img, (2, 0, 1))[np.newaxis, :] / 255  # N, C, H, W = (1, 3, 480, 640)
-        images.append(img)
         poses_tgt.append(pose_tgt)
         flows.append()
 
-        if len(images) == MINIBATCH_SIZE:
-            images_cpu = np.vstack(images)
-            images_cuda = torch.from_numpy(images_cpu).cuda()
+        if idx == MINIBATCH_SIZE:
+            idx = 0
 
-
-            poses_est.append(pose)
-            sample = {'input': images_cuda,
-                      'poses': torch.from_numpy(poses_est),
-                      'flows': torch.from_numpy(np.vstack(flows))}
-            yield sample
+            affine_matrices, zoom = process(pose_src, pose_tgt, images[:, 3:], img_tgt, flows)
+            yield images, flows, poses_src, poses_tgt, affine_matrices, zoom
 
 
 def train(gen_samples, network, optimizer, epoch):
@@ -355,23 +339,23 @@ def train(gen_samples, network, optimizer, epoch):
     for sample in gen_samples:
 
         start = time.time()
-
-        weights_rot = weights_rot.cuda().detach()
-        extents = extents.cuda().detach()
-        points = points.cuda().detach()
+        images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
+        weights_rot = weights_rot
+        extents = extents
+        points = points
 
         # zoom in image
-        grids = nn.functional.affine_grid(affine_matrices, inputs.size())
-        input_zoom = nn.functional.grid_sample(inputs, grids).detach()
+        grids = nn.functional.affine_grid(affine_matrices, images.size())
+        input_zoom = nn.functional.grid_sample(images, grids).detach()
 
         # zoom in flow
-        flow_zoom = nn.functional.grid_sample(flow, grids)
+        flow_zoom = nn.functional.grid_sample(flows, grids)
         for k in range(flow_zoom.shape[0]):
             flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
             flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
         
         output, loss_pose_tensor, quaternion_delta_var, translation_var = \
-            network(input_zoom, weights_rot, poses_src, poses_tgt, extents, points, zoom_factor)
+            network(input_zoom, weights_rot, poses_src, poses_tgt, extents, points, zoom)
 
 
         quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
@@ -411,5 +395,5 @@ if __name__ == '__main__':
 
     epochs = 25
     cfg.epochs = epochs
-    for i in range(epochs):
-        train(generate_samples('training'), network, optimizer, i)
+    for epoch in range(epochs):
+        train(generate_samples('training'), network, optimizer, epoch)

@@ -158,24 +158,11 @@ class Renderer:
         
         return np.flip(color, (0, 1)).copy()
 
-    def render(self, cls_indices, image_tensor, seg_tensor, pc2_tensor=None):
+    def render(self, image_tensor):
         rgb = self.render_()
 
-        temp = np.ones((rgb.shape[0], rgb.shape[1], rgb.shape[2] + 1))
-        temp[:, :, :3] = rgb / 255
-        tensor = torch.from_numpy(temp)
-        image_tensor.copy_(tensor.flip(0))
-
-        seg = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-        seg = np.where(seg > 0, 0.25, 0)
-        temp = np.zeros((rgb.shape[0], rgb.shape[1], rgb.shape[2] + 1))
-        temp[:, :, 2] = seg[:, :]
-        temp[:, :, 3] = np.ones((rgb.shape[0], rgb.shape[1]))
-        seg_t = torch.from_numpy(temp)
-        seg_tensor.copy_(seg_t.flip(0))
-
-        if pc2_tensor is not None:
-            pc2_tensor.copy_(image_tensor)
+        tensor = torch.from_numpy(np.transpose(rgb, (2, 0, 1)))
+        image_tensor.copy_(tensor)
 
 
     def get_next(self, iteritems):
