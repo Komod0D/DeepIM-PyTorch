@@ -298,6 +298,30 @@ def generate_samples(split='testing'):
         pose_tgt = extract_pose(poses[im_num][0])  # TODO check again!!!!!!!
         pose_src = alter_pose(pose_tgt)
 
+
+
+        
+        img_path = next(iteritems).strip()
+        full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
+        num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
+        img = cv2.imread(full_path)
+        img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
+        img = img[80:560]
+        seq_name = os.path.dirname(os.path.dirname(full_path))
+        
+        poses_name = os.path.join(seq_name, 'scene_gt.json')
+        with open(poses_name, 'r') as j:
+            poses = json.load(j)
+
+        
+        pose = poses[num][0]
+        translation = np.array(pose['cam_t_m2c'])
+        rotation = np.array(pose['cam_R_m2c']).reshape((3, 3))
+        rotation = R.from_matrix(rotation).as_quat()
+
+
+
+
         pose_deepim = np.zeros((1, 9))
         pose_deepim[0, 2:] = pose_tgt
         pose_tgt = pose_deepim.copy()
@@ -396,7 +420,7 @@ if __name__ == '__main__':
     network_path = 'data/checkpoints/from_deepim.pth'
     network = load_network(network_path)
 
-    fine_tune = network.fine_tune_parameters()  # TODO fix
+    fine_tune = network.module.fine_tune_parameters()  # TODO fix
     optimizer = torch.optim.SGD(fine_tune, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
 
     generate_samples()

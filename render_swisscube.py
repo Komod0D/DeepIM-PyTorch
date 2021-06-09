@@ -137,6 +137,7 @@ class Renderer:
         self.set_pose(poses[0])
 
     def set_pose(self, pose):
+        pose = np.array(pose)
         if pose.shape[0] == 9:
             pose = pose[2:]
         translation, rotation_quat = pose[:3], pose[3:]
@@ -219,7 +220,7 @@ if __name__ == '__main__':
     
     if r.synthetic:
         os.chdir('/cvlabdata2/home/yhu/data/SwissCube_1.0')
-        with open('testing.txt', 'r') as f:
+        with open('training.txt', 'r') as f:
             images = f.readlines()
 
         iteritems = iter(images)
