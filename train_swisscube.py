@@ -47,6 +47,11 @@ weights_rot = np.array([1, 1, 1, 1])
 extents = np.zeros((1, 3))
 extents[0] = 2 * np.max(np.absolute(points), axis=0)
 
+tweights_rot = torch.from_numpy(weights_rot).cuda()
+textents = torch.from_numpy(extents).cuda()
+tpoints = torch.from_numpy(points).cuda()
+
+
 threadsperblock = (32, 32, 1)
 blockspergrid_x = np.ceil(height / threadsperblock[0])
 blockspergrid_y = np.ceil(width / threadsperblock[1])
@@ -289,7 +294,7 @@ def generate_samples(split='testing'):
         images_list = f.readlines()
 
     images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda()
-    flows = torch.FloatTensor(MINIBATCH_SIZE, 4, height, width).cuda()
+    flows = torch.FloatTensor(MINIBATCH_SIZE, 2, height, width).cuda()
     img_tgt = torch.FloatTensor(3, height, width).cuda()
     poses_src = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
     poses_tgt = torch.FloatTensor(MINIBATCH_SIZE, 9).cuda()
@@ -323,25 +328,23 @@ def generate_samples(split='testing'):
         cfg.renderer.set_pose(pose_tgt[0])
         cfg.renderer.render(img_tgt)
 
+        
+        idx += 1
         if idx == MINIBATCH_SIZE:
             idx = 0
 
-            affine_matrices, zoom = process(pose_src, pose_tgt, images[:, :3], img_tgt, flows)
+            affine_matrices, zoom = process(poses_src.cpu().numpy(), poses_tgt.cpu().numpy(), images[:, :3], img_tgt, flows)
             yield images, flows, poses_src, poses_tgt, affine_matrices, zoom
-
 
 def train(gen_samples, network, optimizer, epoch):
     
     global weights_rot, extents, points
     total_batches = 30356 // MINIBATCH_SIZE
     total_pose, total_flow = 0.0, 0.0
-    for curr_batch, sample in gen_samples:
+    for curr_batch, sample in enumerate(gen_samples):
         start = time.time()
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
-        weights_rot = weights_rot
-        extents = extents
-        points = points
-
+    
         # zoom in image
         grids = nn.functional.affine_grid(affine_matrices, images.size())
         input_zoom = nn.functional.grid_sample(images, grids).detach()
@@ -353,7 +356,7 @@ def train(gen_samples, network, optimizer, epoch):
             flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
         
         output, loss_pose_tensor, quaternion_delta_var, translation_var = \
-            network(input_zoom, weights_rot, poses_src, poses_tgt, extents, points, zoom)
+            network(input_zoom, tweights_rot, poses_src, poses_tgt, textents, tpoints, zoom)
 
 
         quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
@@ -404,7 +407,7 @@ if __name__ == '__main__':
         flow_losses.append(lflow)
         
         state = {'epoch': epoch + 1, 'state_dict': network.module.state_dict()}
-        filename = 'data/checkpoints/ours_epoch_{:d}'.format(epoch+1) + '_checkpoint.pth')
+        filename = 'data/checkpoints/ours_epoch_{:d}'.format(epoch+1) + '_checkpoint.pth'
         torch.save(state, filename)
 
     np.save('losses', np.hstack((np.array(pose_losses)[:, np.newaxis], np.array(flow_losses))[:, np.newaxis]))
