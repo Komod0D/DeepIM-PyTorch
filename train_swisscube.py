@@ -316,6 +316,7 @@ def generate_samples(split='testing'):
         img = cv2.resize(img, (640, 640), cv2.INTER_AREA)
         img = img[80:560]
 
+        print(pose_src, pose_tgt)
         cfg.renderer.set_pose(pose_src[0])
         render_src = cfg.renderer.render_()
 
