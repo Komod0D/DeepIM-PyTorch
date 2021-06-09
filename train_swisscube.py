@@ -300,7 +300,7 @@ def generate_samples(split='testing'):
     poses_src = []
     flows = []
     for img_path in images_list:
-        full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path)
+        full_path = os.path.join('/cvlabdata2/home/yhu/data/SwissCube_1.0', img_path.strip())
         num = str(int(os.path.splitext(os.path.basename(full_path))[0]))
 
         seq_name = os.path.dirname(os.path.dirname(full_path))
