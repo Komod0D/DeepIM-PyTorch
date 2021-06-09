@@ -11,6 +11,8 @@ import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.parallel
 import torch.utils.data
+
+import tools._init_paths
 from fcn.config import cfg, cfg_from_file
 from fcn.multiscaleloss import multiscaleEPE
 from fcn.train_test import _compute_pose_target
@@ -21,7 +23,7 @@ from utils.se3 import se3_mul, se3_inverse
 from render_swisscube import Renderer
 
 CUDA_DEVICE = 0
-MINIBATCH_SIZE = 16
+MINIBATCH_SIZE = 32
 
 width, height = 640, 480
 r = Renderer(synthetic=True)
@@ -331,8 +333,8 @@ def train(gen_samples, network, optimizer, epoch):
     global weights_rot, extents, points
     total_batches = 30356 // MINIBATCH_SIZE
     total_pose, total_flow = 0.0, 0.0
+    start = time.time()
     for curr_batch, sample in enumerate(gen_samples):
-        start = time.time()
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
     
         # zoom in image
@@ -354,7 +356,7 @@ def train(gen_samples, network, optimizer, epoch):
         quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
         translation = translation_var.cpu().detach().numpy()
         poses_est, error_rot, error_trans = \
-                _compute_pose_target(quaternion_delta, translation, poses_src, poses_tgt)
+                _compute_pose_target(quaternion_delta, translation, poses_src.cpu().numpy(), poses_tgt.cpu().numpy())
 
         # losses
         loss_pose = torch.mean(loss_pose_tensor)
@@ -366,13 +368,11 @@ def train(gen_samples, network, optimizer, epoch):
         loss.backward()
         optimizer.step()
         end = time.time() - start
-
+        start = time.time()
         total_pose += loss_pose.item()
         total_flow += loss_flow.item()
-        error_rot = error_rot.mean(axis=0)
-        error_trans = error_trans.mean(axis=0)
 
-        print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (%.2f, %.2f), l_flow %.4f, lr %.6f, in time %f'
+        print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
               % (curr_batch + 1, total_batches, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
     return total_pose / total_batches, total_flow / total_batches
                 
@@ -385,7 +385,7 @@ if __name__ == '__main__':
     network_path = 'data/checkpoints/from_deepim.pth'
     network = load_network(network_path)
 
-    fine_tune = network.module.fine_tune_parameters()  # TODO fix
+    fine_tune = [param for name, param in network.module.named_parameters()]
     optimizer = torch.optim.SGD(fine_tune, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
  
 
