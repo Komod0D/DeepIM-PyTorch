@@ -399,7 +399,7 @@ if __name__ == '__main__':
         flow_losses.append(lflow)
         
         state = {'epoch': epoch + 1, 'state_dict': network.module.state_dict()}
-        filename = 'data/checkpoints/ours_epoch_{:d}'.format(epoch+1) + '_checkpoint.pth'
+        filename = 'data/checkpoints/swisscube/ours_epoch_{:d}'.format(epoch+1) + '_checkpoint.pth'
         torch.save(state, filename)
 
     np.save('losses', np.hstack((np.array(pose_losses)[:, np.newaxis], np.array(flow_losses))[:, np.newaxis]))
