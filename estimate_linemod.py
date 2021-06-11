@@ -19,8 +19,10 @@ import os.path as osp
 import numpy as np
 import cv2
 import scipy.io
-from scipy.spatial.transform import Rotation as R
 import glob
+from scipy.spatial.transform import Rotation as R
+from transforms3d.quaternions import mat2quat, quat2mat, qmult
+
 
 import tools._init_paths
 from fcn.train_test import test_image
@@ -37,6 +39,10 @@ from bop_toolkit_lib.renderer_adapter import RendererAdapter
 import json
 
 classes = [f'{obj:06d}' for obj in range(5, 16)]
+
+
+def add(mesh, pose_est, pose_tgt):
+    return None
 
 
 def parse_args():
@@ -315,7 +321,7 @@ if __name__ == '__main__':
             translation += dt
             print(f'disturbing translation by {dt}')
 
-            rotation_q = scipy.spatial.transform.Rotation.from_matrix(rotation).as_quat()
+            rotation_q = mat2quat(rotation)
 
             poses = np.concatenate((rotation_q, translation))
 
@@ -327,12 +333,4 @@ if __name__ == '__main__':
 
             # run network 
             im_pose_color, pose_result = test_image(network, dataset, im, depth, poses_input, test_data)
-
-            # save result
-            if not cfg.TEST.VISUALIZE:
-                head, tail = os.path.split(images_color[i])
-                filename = os.path.join(resdir, tail + '.mat')
-                scipy.io.savemat(filename, pose_result, do_compression=True)
-                # rendered image
-                filename = os.path.join(resdir, tail + '_render.jpg')
-                cv2.imwrite(filename, im_pose_color[:, :, (2, 1, 0)])
+            print(pose_result)
