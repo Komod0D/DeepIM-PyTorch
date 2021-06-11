@@ -19,6 +19,7 @@ from fcn.train_test import _compute_pose_target
 from networks.FlowNetS import FlowNetS
 from scipy.spatial.transform import Rotation as R
 from utils.se3 import se3_mul, se3_inverse
+from transforms3d.quaternions import mat2quat, quat2mat, qmult
 
 from render_swisscube import Renderer
 
@@ -141,15 +142,16 @@ def process(poses_src, poses_tgt, seg_src, seg_tgt, flows):
 
         cfg.renderer.set_pose(poses_tgt[j])
         cfg.renderer.render(seg_tgt[j])
+        
 
         RT_tgt = np.zeros((3, 4), dtype=np.float32)
         RT_src = np.zeros((3, 4), dtype=np.float32)
 
-        RT_tgt[:3, :3] = R.from_quat(poses_tgt[j, 2:6]).as_matrix()
+        RT_tgt[:3, :3] = quat2mat(poses_tgt[j, 2:6])
         RT_tgt[:, 3] = poses_tgt[j, 6:]
 
         # compute box
-        RT_src[:3, :3] = R.from_quat(poses_src[j, 2:6]).as_matrix()
+        RT_src[:3, :3] = quat2mat(poses_src[j, 2:6])
         RT_src[:, 3] = poses_src[j, 6:]
         x2d = np.matmul(intrinsic, np.matmul(RT_src, x3d))
         x2d[0, :] = np.divide(x2d[0, :], x2d[2, :])
@@ -196,7 +198,8 @@ def load_network(network_path):
 
     weights = torch.load(network_path)
     network = FlowNetS(1, batchNorm=False).cuda(device=CUDA_DEVICE)
-    network.load_state_dict(weights['state_dict'])
+    print(weights.keys())
+    network.load_state_dict(weights)
     network = torch.nn.DataParallel(network, device_ids=[CUDA_DEVICE]).cuda(device=CUDA_DEVICE)
     cudnn.benchmark = True
     network.train()
@@ -214,7 +217,7 @@ def load_poses(path):
 def extract_pose(pose_dict):
     translation = np.array(pose_dict['cam_t_m2c'])
     rotation = np.array(pose_dict['cam_R_m2c']).reshape((3, 3))
-    rotation = R.from_matrix(rotation).as_quat()
+    rotation = mat2quat(rotation)
 
     pose_tgt = np.concatenate((rotation, translation))
     pose_src = alter_pose(pose_tgt)
@@ -230,14 +233,14 @@ def extract_pose(pose_dict):
 
 
 def alter_pose(pose):
-    rot = R.from_quat(pose[:4]).as_matrix()
+    rot = quat2mat(pose[:4]) 
     t = pose[4:]
     dr = R.from_euler('xyz', np.random.rand(3) * 0.2 - 0.1, degrees=False).as_matrix()
     rot = dr @ rot
     dt = np.random.rand(3) * avg_t * 0.1
     t = dt + t
 
-    q = R.from_matrix(rot).as_quat()
+    q = mat2quat(rot)
     return np.concatenate((q, t))
 
 
@@ -252,6 +255,10 @@ def generate_samples(split='testing'):
     images_list_path = os.path.join(base_path, f'{split}.txt')
     with open(images_list_path, 'r') as f:
         images_list = f.readlines()
+
+    n = len(images_list)
+    images_list = [images_list[i] for i in np.random.permutation(len(images_list))]
+    assert len(images_list) == n
 
     images = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width).cuda().detach()
     flows = torch.FloatTensor(MINIBATCH_SIZE, 2, height, width).cuda().detach()
@@ -296,73 +303,138 @@ def train(gen_samples, network, optimizer, epoch):
     total_batches = 30356 // MINIBATCH_SIZE
     total_pose, total_flow = 0.0, 0.0
     start = time.time()
-    n_iter = 4
-    renders = torch.FloatTensor(MINIBATCH_SIZE, 6, height, width)
+    
     for curr_batch, sample in enumerate(gen_samples):
         images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
 
-        for it in range(n_iter):
-            # zoom in image
-            grids = nn.functional.affine_grid(affine_matrices, images.size())
-            input_zoom = nn.functional.grid_sample(images, grids).detach()
+        # zoom in image
+        grids = nn.functional.affine_grid(affine_matrices, images.size(), align_corners=False)
+        input_zoom = nn.functional.grid_sample(images, grids, align_corners=False).detach()
 
-            # zoom in flow
-            flow_zoom = nn.functional.grid_sample(flows, grids)
-            for k in range(flow_zoom.shape[0]):
-                flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
-                flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
+        # zoom in flow
+        flow_zoom = nn.functional.grid_sample(flows, grids)
+        for k in range(flow_zoom.shape[0]):
+            flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
+            flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
 
-            output, loss_pose_tensor, quaternion_delta_var, translation_var = \
-                network(input_zoom.float(), tweights_rot.float(),
-                        torch.from_numpy(poses_src).cuda().detach(), torch.from_numpy(poses_tgt).cuda().detach(),
-                        textents.float(), tpoints.float(), zoom.float())
+        output, loss_pose_tensor, quaternion_delta_var, translation_var = \
+            network(input_zoom.float(), tweights_rot.float(),
+                    torch.from_numpy(poses_src).cuda().detach(), torch.from_numpy(poses_tgt).cuda().detach(),
+                    textents.float(), tpoints.float(), zoom.float())
 
 
-            quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
-            translation = translation_var.cpu().detach().numpy()
+        quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
+        translation = translation_var.cpu().detach().numpy()
+        
+        
+        try:
             poses_est, error_rot, error_trans = \
-                    _compute_pose_target(quaternion_delta, translation, poses_src, poses_tgt)
+                _compute_pose_target(quaternion_delta, translation, poses_src, poses_tgt)
 
-            # losses
-            loss_pose = torch.mean(loss_pose_tensor)
-            loss_flow = 0.1 * multiscaleEPE(output, flow_zoom)
-            loss = loss_pose + loss_flow
+        except:
+            print('error error')
+            error_rot = np.nan
+            error_trans = np.nan
 
-            # compute gradient and do optimization step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        # losses
+        loss_pose = torch.mean(loss_pose_tensor)
+        loss_flow = 0.1 * multiscaleEPE(output, flow_zoom)
+        loss = loss_pose + loss_flow
 
-            end = time.time() - start
-            start = time.time()
-            total_pose += loss_pose.item()
-            total_flow += loss_flow.item()
+        # compute gradient and do optimization step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-            print('batch: [%d/%d], iter %d, epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
-                  % (curr_batch + 1, total_batches, it + 1, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
+        end = time.time() - start
+        start = time.time()
+        total_pose += loss_pose.item()
+        total_flow += loss_flow.item()
 
-            affine_matrices, zoom = process(poses_est, poses_tgt, renders[:, :3], renders[:, 3:], flows)
-            images[:, 3:].copy_(renders[:, :3])
+        print('batch: [%d/%d], epoch: [%d/%d], loss %.4f, l_pose %.4f (r %.2f, t %.2f), l_flow %.4f, lr %.6f, in time %f'
+              % (curr_batch + 1, total_batches, epoch, cfg.epochs, loss, loss_pose, error_rot, error_trans, loss_flow, loss_pose, end))
+        
+        weights = network.module.state_dict()
+        fc6, fc7, fcr, fct = weights['fc6.0.weight'], weights['fc7.0.weight'], weights['fcr.weight'], weights['fct.weight']
+        print(f'fc6.0 {fc6.max():.4f} fc7.0 {fc7.max():.4f} fcr {fcr.max():.4f} fct {fct.mean():.4f}')
+        if curr_batch % 100 == 0:
+            torch.save(weights, 'data/checkpoints/swisscube/latest.pth')
 
     return total_pose / total_batches, total_flow / total_batches
                 
                 
+def evaluate(gen_samples, network):
+    
+    global weights_rot, extents, points
+    total_batches = 30356 // MINIBATCH_SIZE
+    total_pose, total_flow = 0.0, 0.0
+    start = time.time()
+    
+    for curr_batch, sample in enumerate(gen_samples):
+        images, flows, poses_src, poses_tgt, affine_matrices, zoom = sample
+
+        # zoom in image
+        grids = nn.functional.affine_grid(affine_matrices, images.size(), align_corners=False)
+        input_zoom = nn.functional.grid_sample(images, grids, align_corners=False).detach()
+
+        # zoom in flow
+        flow_zoom = nn.functional.grid_sample(flows, grids)
+        for k in range(flow_zoom.shape[0]):
+            flow_zoom[k, 0, :, :] /= affine_matrices[k, 0, 0] * 20.0
+            flow_zoom[k, 1, :, :] /= affine_matrices[k, 1, 1] * 20.0
+
+        quaternion_delta_var, translation_var = \
+            network(input_zoom.float(), tweights_rot.float(),
+                    torch.from_numpy(poses_src).cuda().detach(), torch.from_numpy(poses_tgt).cuda().detach(),
+                    textents.float(), tpoints.float(), zoom.float())
+
+
+        quaternion_delta = quaternion_delta_var.cpu().detach().numpy()
+        translation = translation_var.cpu().detach().numpy()
+        
+        
+        try:
+            poses_est, error_rot, error_trans = \
+                _compute_pose_target(quaternion_delta, translation, poses_src, poses_tgt)
+        
+            for i in images.shape[0]:
+                img_real = images[i, :3].cpu().numpy() * 255
+                img_real = np.transpose(img_real, (1, 2, 0))
+                
+                cfg.renderer.set_pose(poses_est[i])
+                img_render = cfg.renderer.render_()
+                img_seg = (img_render > 0).astype(np.float32)
+                img_seg[:, :, :2] = 0
+
+                both = cv2.addWeighted(img_real, 0.4, img_seg, 0.1, 0)
+                cv2.imshow('diff', both)
+                key = cv2.waitKey(0)
+
+                if key == 27:
+                    exit(0)
+        except:
+            print(f'pred {quaternion_delta} {translation}')
+            print(f'true {poses_tgt[0, 2:6]} {poses_tgt[0, 6:] - poses_src[0, 6:]}')
+            error_rot = np.nan
+            error_trans = np.nan
+
 if __name__ == '__main__':
     
     cfg_from_file('experiments/cfgs/swisscube.yml')
 
     cfg.renderer = Renderer(synthetic=True)
-    network_path = 'data/checkpoints/from_deepim.pth'
+    network_path = 'data/checkpoints/swisscube/latest.pth'
     network = load_network(network_path)
-
+    
     fine_tune = [param for name, param in network.module.named_parameters()]
     optimizer = torch.optim.SGD(fine_tune, cfg.TRAIN.LEARNING_RATE, momentum=cfg.TRAIN.MOMENTUM)
  
 
     pose_losses, flow_losses = [], []
     epochs = 25
+    start_epoch = 2
     cfg.epochs = epochs
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         lpose, lflow = train(generate_samples('training'), network, optimizer, epoch)
 
         pose_losses.append(lpose)

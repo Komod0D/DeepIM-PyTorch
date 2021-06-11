@@ -6,6 +6,7 @@ import cv2
 import os
 import torch
 
+from transforms3d.quaternions import mat2quat, quat2mat, qmult
 from scipy.spatial.transform import Rotation as R
 
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
@@ -145,7 +146,7 @@ class Renderer:
         if not self.synthetic:
             rotation = quaternion2rotation(rotation_quat)
         else:
-            rotation = R.from_quat(rotation_quat).as_matrix()
+            rotation = quat2mat(rotation_quat)
             rotation = rotation @ R.from_euler('x', 90, degrees=True).as_matrix()
 
         transform = to_homo(rotation, translation)
